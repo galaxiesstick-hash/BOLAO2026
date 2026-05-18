@@ -9,6 +9,8 @@ const PUBLIC_PATHS = [
   "/pagamento",
   "/recuperar-senha",
   "/api/auth",
+  "/api/cron",
+  "/api/webhooks",
 ];
 
 const ADMIN_PATHS = ["/admin"];
