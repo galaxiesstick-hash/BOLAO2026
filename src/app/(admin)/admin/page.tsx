@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import { Users, Clock, Trophy, Radio } from "lucide-react";
+import { Users, Clock, Trophy, Radio, Gamepad2 } from "lucide-react";
+import Link from "next/link";
 import PaymentActions from "./PaymentActions";
 
 export const dynamic = "force-dynamic";
@@ -138,6 +139,38 @@ export default async function AdminDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Quick links */}
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/admin/jogos"
+          className="glass-card p-4 border border-[#2A398D]/20 flex items-center gap-3 hover:border-[#2A398D]/50 transition-colors group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-[#2A398D]/10 flex items-center justify-center shrink-0">
+            <Gamepad2 className="w-5 h-5 text-[#2A398D]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white group-hover:text-[#7a8fd4] transition-colors">
+              Gerenciar Jogos
+            </p>
+            <p className="text-xs text-slate-500">Resultados e status</p>
+          </div>
+        </Link>
+        <Link
+          href="/admin/pagamentos"
+          className="glass-card p-4 border border-amber-500/20 flex items-center gap-3 hover:border-amber-500/50 transition-colors group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white group-hover:text-amber-300 transition-colors">
+              Pagamentos
+            </p>
+            <p className="text-xs text-slate-500">{pendingCount} pendentes</p>
+          </div>
+        </Link>
+      </div>
 
       {/* Pending payments */}
       <Card>
