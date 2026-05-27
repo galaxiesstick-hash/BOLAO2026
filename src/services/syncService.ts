@@ -294,12 +294,16 @@ export async function syncOdds(): Promise<{
   let updated = 0;
   let skipped = 0;
 
+  // Only update matches where the prediction window is still open (kickoff > 10min from now)
+  const lockCutoff = new Date(Date.now() + 10 * 60 * 1000);
+
   for (const odds of matches) {
     const result = await db.match.updateMany({
       where: {
         homeTeamCode: odds.homeTeamCode,
         awayTeamCode: odds.awayTeamCode,
-        status: { in: ["SCHEDULED", "LIVE"] },
+        status: "SCHEDULED",
+        kickoff: { gt: lockCutoff },
       },
       data: {
         homeWinProb: odds.homeWinProb,

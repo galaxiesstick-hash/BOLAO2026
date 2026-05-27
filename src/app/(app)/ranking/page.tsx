@@ -19,6 +19,7 @@ export default async function RankingPage() {
           id: true,
           name: true,
           avatarUrl: true,
+          image: true,
         },
       },
     },
@@ -31,7 +32,7 @@ export default async function RankingPage() {
   const entries: RankingEntry[] = scores.map((score, idx) => ({
     userId: score.user.id,
     userName: score.user.name,
-    avatarUrl: score.user.avatarUrl,
+    avatarUrl: score.user.avatarUrl ?? score.user.image ?? null,
     totalPoints: score.totalPoints,
     overallRank: score.overallRank ?? idx + 1,
     divisionRank: score.divisionRank,
