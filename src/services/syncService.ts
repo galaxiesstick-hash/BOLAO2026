@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { calculateScore } from "@/lib/scoring";
+import { fetchWorldCupOdds } from "@/lib/oddsApi";
 import {
   fetchAllCompetitionMatches,
   fetchLiveMatches,
@@ -281,8 +282,39 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
   return { calculated };
 }
 
-export async function syncOdds(): Promise<{ updated: number; source: string }> {
-  return { updated: 0, source: "manual" };
+export async function syncOdds(): Promise<{
+  updated: number;
+  skipped: number;
+  source: string;
+  requestsRemaining: number | null;
+  unmapped: string[];
+}> {
+  const { matches, requestsRemaining, unmapped } = await fetchWorldCupOdds();
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const odds of matches) {
+    const result = await db.match.updateMany({
+      where: {
+        homeTeamCode: odds.homeTeamCode,
+        awayTeamCode: odds.awayTeamCode,
+        status: { in: ["SCHEDULED", "LIVE"] },
+      },
+      data: {
+        homeWinProb: odds.homeWinProb,
+        drawProb: odds.drawProb,
+        awayWinProb: odds.awayWinProb,
+        oddsSource: "the-odds-api",
+        oddsUpdatedAt: new Date(),
+      },
+    });
+
+    if (result.count > 0) updated += result.count;
+    else skipped++;
+  }
+
+  return { updated, skipped, source: "the-odds-api", requestsRemaining, unmapped };
 }
 
 /**

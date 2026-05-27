@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { getFlagUrl } from "@/lib/utils";
 
 type MatchOdds = {
@@ -151,8 +152,36 @@ function OddsRow({ match }: { match: MatchOdds }) {
   );
 }
 
+interface SyncResult {
+  updated: number;
+  skipped: number;
+  requestsRemaining: number | null;
+  unmapped: string[];
+}
+
 export default function OddsEditor({ matches }: { matches: MatchOdds[] }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  async function handleSyncOdds() {
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/admin/sync-odds", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro desconhecido");
+      setSyncResult(data);
+      router.refresh();
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const filtered = matches.filter(
     (m) =>
@@ -164,6 +193,36 @@ export default function OddsEditor({ matches }: { matches: MatchOdds[] }) {
 
   return (
     <div className="space-y-3">
+      {/* Sync Odds button */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={handleSyncOdds}
+          disabled={syncing}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+          style={{
+            background: syncing ? "rgba(42,57,141,0.4)" : "#2A398D",
+            color: syncing ? "rgba(255,255,255,0.5)" : "#fff",
+            cursor: syncing ? "not-allowed" : "pointer",
+            border: "1px solid rgba(42,57,141,0.6)",
+          }}
+        >
+          <span>{syncing ? "⏳" : "🔄"}</span>
+          {syncing ? "Sincronizando…" : "Sincronizar Odds (The Odds API)"}
+        </button>
+        {syncResult && (
+          <div className="text-xs text-slate-300 flex gap-3">
+            <span className="text-[#3CAC3B] font-semibold">✓ {syncResult.updated} jogos atualizados</span>
+            {syncResult.skipped > 0 && <span className="text-slate-400">{syncResult.skipped} ignorados</span>}
+            {syncResult.requestsRemaining !== null && (
+              <span className="text-slate-500">Req. restantes: {syncResult.requestsRemaining}</span>
+            )}
+            {syncResult.unmapped.length > 0 && (
+              <span className="text-yellow-400">⚠ Sem mapeamento: {syncResult.unmapped.join(", ")}</span>
+            )}
+          </div>
+        )}
+        {syncError && <span className="text-xs text-red-400">✗ {syncError}</span>}
+      </div>
       <input
         type="text"
         placeholder="Filtrar por seleção…"
