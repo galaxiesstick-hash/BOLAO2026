@@ -152,6 +152,44 @@ function RankRow({ entry, isMe, displayRank }: { entry: RankingEntry; isMe: bool
   );
 }
 
+// ─── Prize pool banner ────────────────────────────────────────────────────────
+
+function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approvedCount: number }) {
+  const formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(prizePool);
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 14,
+        padding: "12px 16px", borderRadius: 18,
+        background: "linear-gradient(135deg, rgba(201,168,76,0.2) 0%, rgba(201,168,76,0.06) 100%)",
+        border: "1px solid rgba(201,168,76,0.45)",
+      }}
+    >
+      <div style={{ fontSize: 30, lineHeight: 1 }}>🏆</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(201,168,76,0.75)", letterSpacing: 1.2, textTransform: "uppercase" }}>
+          Pote do Bolão
+        </div>
+        <div className="font-display" style={{ fontSize: 28, color: "#C9A84C", lineHeight: 1.1, letterSpacing: 0.4 }}>
+          {formatted}
+        </div>
+        {approvedCount > 0 && (
+          <div style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", marginTop: 2 }}>
+            {approvedCount} participante{approvedCount !== 1 ? "s" : ""} inscrito{approvedCount !== 1 ? "s" : ""}
+          </div>
+        )}
+      </div>
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: 9, color: "rgba(231,238,250,0.38)", letterSpacing: 0.5, textTransform: "uppercase" }}>Prêmio</div>
+        <div className="font-display" style={{ fontSize: 20, color: "#C9A84C", letterSpacing: 0.4 }}>
+          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(prizePool * 0.6)}
+        </div>
+        <div style={{ fontSize: 8.5, color: "rgba(231,238,250,0.28)" }}>60% ao 1º</div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -159,9 +197,11 @@ interface Props {
   currentUserId: string;
   divisions: Division[];
   totalParticipants: number;
+  prizePool?: number;
+  approvedCount?: number;
 }
 
-export default function RankingClient({ entries, currentUserId, divisions, totalParticipants }: Props) {
+export default function RankingClient({ entries, currentUserId, divisions, totalParticipants, prizePool, approvedCount }: Props) {
   const [search, setSearch] = useState("");
   const [activeDiv, setActiveDiv] = useState<string>("all");
 
@@ -205,6 +245,11 @@ export default function RankingClient({ entries, currentUserId, divisions, total
           {totalParticipants} participantes
         </div>
       </div>
+
+      {/* Prize pool */}
+      {prizePool != null && prizePool > 0 && (
+        <PrizeBanner prizePool={prizePool} approvedCount={approvedCount ?? 0} />
+      )}
 
       {/* Division tabs */}
       {divTabs.length > 1 && (

@@ -11,19 +11,29 @@ export default async function RankingPage() {
   if (!session?.user) redirect("/login");
 
   // Fetch all UserScore records with user data, ordered by points desc
-  const scores = await db.userScore.findMany({
-    orderBy: { totalPoints: "desc" },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          avatarUrl: true,
-          image: true,
+  const [scores, prizePoolAgg] = await Promise.all([
+    db.userScore.findMany({
+      orderBy: { totalPoints: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            image: true,
+          },
         },
       },
-    },
-  });
+    }),
+    db.payment.aggregate({
+      where: { status: "APPROVED" },
+      _sum: { amount: true },
+      _count: { id: true },
+    }),
+  ]);
+
+  const prizePool = prizePoolAgg._sum.amount ? Number(prizePoolAgg._sum.amount) : 0;
+  const approvedCount = prizePoolAgg._count.id;
 
   const totalParticipants = scores.length;
   const divisions = calculateDivisions(totalParticipants);
@@ -48,6 +58,8 @@ export default async function RankingPage() {
       currentUserId={session.user.id}
       divisions={divisions}
       totalParticipants={totalParticipants}
+      prizePool={prizePool}
+      approvedCount={approvedCount}
     />
   );
 }

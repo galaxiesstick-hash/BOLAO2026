@@ -72,6 +72,7 @@ model User {
   predictions   Prediction[]
   answers       Answer[]
   score         UserScore?
+  achievements  UserAchievement[]
   notifications Notification[]
   accounts      Account[]
   sessions      Session[]
@@ -287,6 +288,21 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+model UserAchievement {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  type        String
+  level       Int      @default(1)
+  pointsBonus Int      @default(0) @map("points_bonus")
+  unlockedAt  DateTime @default(now()) @map("unlocked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("user_achievements")
 }
 
 model SyncLog {

@@ -6,15 +6,73 @@ import { getInitials } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// ─── Achievement data ─────────────────────────────────────────────────────────
+// ─── Achievement group definitions ────────────────────────────────────────────
 
-const ACHIEVEMENTS = [
-  { icon: "flame", label: "Cravador", sub: "Cravou um placar", color: "#C9A84C" },
-  { icon: "bolt", label: "Sequência", sub: "3 acertos seguidos", color: "#3CAC3B" },
-  { icon: "trophy", label: "Top 10", sub: "Ranking geral", color: "#C9A84C" },
-  { icon: "star", label: "Veterano", sub: "10 palpites", color: "#C9A84C" },
-  { icon: "shield", label: "Defensor", sub: "Empate 0-0", color: "#4d62c9" },
-  { icon: "fire", label: "Goleada", sub: "Acertou 4+ gols", color: "#E61D25" },
+type AchievementGroup = {
+  key: string;
+  icon: string;
+  color: string;
+  label: string;
+  levels: { type: string; sub: string; threshold: number }[];
+  progressValue: (stats: AchievementStats) => number;
+};
+
+type AchievementStats = {
+  exactScores: number;
+  maxStreak: number;
+  zebraWins: number;
+  matchesWithPoints: number;
+};
+
+const ACHIEVEMENT_GROUPS: AchievementGroup[] = [
+  {
+    key: "CRAVADOR",
+    icon: "flame",
+    color: "#C9A84C",
+    label: "Cravador",
+    levels: [
+      { type: "CRAVADOR_I",   sub: "1 placar exato",    threshold: 1  },
+      { type: "CRAVADOR_II",  sub: "5 placares exatos", threshold: 5  },
+      { type: "CRAVADOR_III", sub: "10 placares exatos", threshold: 10 },
+    ],
+    progressValue: (s) => s.exactScores,
+  },
+  {
+    key: "SEQUENCIA_QUENTE",
+    icon: "bolt",
+    color: "#E61D25",
+    label: "Em Chamas",
+    levels: [
+      { type: "SEQUENCIA_QUENTE_I",   sub: "3 acertos seguidos", threshold: 3 },
+      { type: "SEQUENCIA_QUENTE_II",  sub: "5 acertos seguidos", threshold: 5 },
+      { type: "SEQUENCIA_QUENTE_III", sub: "7 acertos seguidos", threshold: 7 },
+    ],
+    progressValue: (s) => s.maxStreak,
+  },
+  {
+    key: "REI_DAS_ZEBRAS",
+    icon: "shield",
+    color: "#4d62c9",
+    label: "Rei das Zebras",
+    levels: [
+      { type: "REI_DAS_ZEBRAS_I",   sub: "1 vitória improvável", threshold: 1 },
+      { type: "REI_DAS_ZEBRAS_II",  sub: "3 vitórias improváveis", threshold: 3 },
+      { type: "REI_DAS_ZEBRAS_III", sub: "5 vitórias improváveis", threshold: 5 },
+    ],
+    progressValue: (s) => s.zebraWins,
+  },
+  {
+    key: "INVENCIVEL",
+    icon: "star",
+    color: "#3CAC3B",
+    label: "Invencível",
+    levels: [
+      { type: "INVENCIVEL_I",   sub: "10 jogos pontuados", threshold: 10 },
+      { type: "INVENCIVEL_II",  sub: "20 jogos pontuados", threshold: 20 },
+      { type: "INVENCIVEL_III", sub: "30 jogos pontuados", threshold: 30 },
+    ],
+    progressValue: (s) => s.matchesWithPoints,
+  },
 ];
 
 function AchievementIcon({ name, color }: { name: string; color: string }) {
@@ -49,19 +107,34 @@ function AchievementIcon({ name, color }: { name: string; color: string }) {
   }
 }
 
-function AchievementCard({ icon, label, sub, color, unlocked = false }: {
-  icon: string; label: string; sub: string; color: string; unlocked?: boolean;
+const ROMAN = ["", "I", "II", "III"];
+
+function AchievementCard({
+  group, unlockedLevel, progress,
+}: {
+  group: AchievementGroup;
+  unlockedLevel: number; // 0 = locked, 1/2/3 = level unlocked
+  progress: number;
 }) {
+  const { icon, color, label, levels } = group;
+  const unlocked = unlockedLevel > 0;
+  const maxLevel = levels.length;
+  const isMax = unlockedLevel >= maxLevel;
+  const nextLevel = levels[unlockedLevel]; // undefined if maxed
+  const progressTarget = nextLevel?.threshold ?? levels[maxLevel - 1].threshold;
+  const pct = Math.min(100, Math.round((progress / progressTarget) * 100));
+
   return (
     <div
       style={{
-        flexShrink: 0, width: 88, padding: 12, borderRadius: 14, textAlign: "center",
+        flexShrink: 0, width: 100, padding: "12px 10px", borderRadius: 14, textAlign: "center",
         background: unlocked ? `linear-gradient(180deg, ${color}22, ${color}08)` : "rgba(255,255,255,0.025)",
         border: `1px solid ${unlocked ? color + "55" : "rgba(255,255,255,0.07)"}`,
-        opacity: unlocked ? 1 : 0.5,
+        opacity: unlocked ? 1 : 0.55,
         position: "relative",
       }}
     >
+      {/* Icon */}
       <div
         style={{
           width: 36, height: 36, borderRadius: 10,
@@ -72,8 +145,30 @@ function AchievementCard({ icon, label, sub, color, unlocked = false }: {
       >
         <AchievementIcon name={icon} color={unlocked ? color : "rgba(231,238,250,0.38)"} />
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#f3f6fb", marginTop: 6 }}>{label}</div>
-      <div style={{ fontSize: 9.5, color: "rgba(231,238,250,0.38)", marginTop: 1 }}>{sub}</div>
+
+      {/* Label + level */}
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "#f3f6fb", marginTop: 6, lineHeight: 1.2 }}>{label}</div>
+      {unlocked ? (
+        <div style={{ fontSize: 9, fontWeight: 700, color, marginTop: 2 }}>
+          NÍVEL {ROMAN[unlockedLevel]}{isMax ? " ★" : ""}
+        </div>
+      ) : (
+        <div style={{ fontSize: 9, color: "rgba(231,238,250,0.38)", marginTop: 2 }}>BLOQUEADO</div>
+      )}
+
+      {/* Progress bar */}
+      {!isMax && (
+        <div style={{ marginTop: 7 }}>
+          <div style={{ height: 3, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.4s" }} />
+          </div>
+          <div style={{ fontSize: 8.5, color: "rgba(231,238,250,0.38)", marginTop: 3 }}>
+            {progress}/{progressTarget}
+          </div>
+        </div>
+      )}
+
+      {/* Lock icon */}
       {!unlocked && (
         <div style={{ position: "absolute", top: 8, right: 8 }}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
@@ -92,7 +187,7 @@ export default async function PerfilPage() {
 
   const userId = session.user.id;
 
-  const [userScore, predictionCount, recentPredictions, allFinishedPredictions] = await Promise.all([
+  const [userScore, predictionCount, recentPredictions, finishedPredictions, dbAchievements] = await Promise.all([
     db.userScore.findUnique({ where: { userId } }),
     db.prediction.count({ where: { userId } }),
     db.prediction.findMany({
@@ -116,11 +211,18 @@ export default async function PerfilPage() {
     db.prediction.findMany({
       where: { userId, match: { status: "FINISHED" } },
       orderBy: { match: { kickoff: "asc" } },
-      include: {
+      select: {
+        homeGoals: true,
+        awayGoals: true,
+        totalPoints: true,
         match: {
-          select: { homeGoals: true, awayGoals: true, kickoff: true },
+          select: { homeGoals: true, awayGoals: true, homeWinProb: true, awayWinProb: true, kickoff: true },
         },
       },
+    }),
+    db.userAchievement.findMany({
+      where: { userId },
+      select: { type: true, level: true, pointsBonus: true, unlockedAt: true },
     }),
   ]);
 
@@ -133,55 +235,27 @@ export default async function PerfilPage() {
     ? Math.round(((exactScores + correctWinners) / predictionCount) * 100)
     : 0;
 
-  // ─── Compute achievements from real data ────────────────────
-  // 1. Cravador: acertou pelo menos 1 placar exato
-  const hasCravador = exactScores >= 1;
-
-  // 2. Sequência: 3 acertos seguidos (vencedor correto ou exato)
-  let hasSequencia = false;
-  let streak = 0;
-  for (const pred of allFinishedPredictions) {
+  // ─── Compute achievement progress metrics ────────────────────
+  let maxStreak = 0, curStreak = 0, zebraWins = 0, matchesWithPoints = 0;
+  for (const pred of finishedPredictions) {
     const m = pred.match;
-    if (m.homeGoals == null || m.awayGoals == null) { streak = 0; continue; }
-    const exact = m.homeGoals === pred.homeGoals && m.awayGoals === pred.awayGoals;
-    const winner =
-      (m.homeGoals > m.awayGoals && pred.homeGoals > pred.awayGoals) ||
-      (m.homeGoals < m.awayGoals && pred.homeGoals < pred.awayGoals) ||
-      (m.homeGoals === m.awayGoals && pred.homeGoals === pred.awayGoals);
-    if (exact || winner) {
-      streak++;
-      if (streak >= 3) { hasSequencia = true; break; }
-    } else {
-      streak = 0;
-    }
+    if (m.homeGoals === null || m.awayGoals === null) continue;
+    const pts = pred.totalPoints ?? 0;
+    if (pts > 0) {
+      curStreak++; maxStreak = Math.max(maxStreak, curStreak); matchesWithPoints++;
+      const realHomeWin = m.homeGoals > m.awayGoals;
+      const realAwayWin = m.homeGoals < m.awayGoals;
+      const hp = m.homeWinProb ? Number(m.homeWinProb) : 34;
+      const ap = m.awayWinProb ? Number(m.awayWinProb) : 33;
+      if (realHomeWin && hp < 15) zebraWins++;
+      else if (realAwayWin && ap < 15) zebraWins++;
+    } else { curStreak = 0; }
   }
 
-  // 3. Top 10: está no top 10 do ranking geral
-  const hasTop10 = !!overallRank && overallRank <= 10;
-
-  // 4. Veterano: fez pelo menos 10 palpites
-  const hasVeterano = predictionCount >= 10;
-
-  // 5. Defensor: acertou empate 0-0
-  const hasDefensor = allFinishedPredictions.some(p =>
-    p.match.homeGoals === 0 && p.match.awayGoals === 0 &&
-    p.homeGoals === 0 && p.awayGoals === 0
-  );
-
-  // 6. Goleada: acertou o vencedor em jogo com 4+ gols no total
-  const hasGoleada = allFinishedPredictions.some(p => {
-    const m = p.match;
-    if (m.homeGoals == null || m.awayGoals == null) return false;
-    if (m.homeGoals + m.awayGoals < 4) return false;
-    return (
-      (m.homeGoals > m.awayGoals && p.homeGoals > p.awayGoals) ||
-      (m.homeGoals < m.awayGoals && p.homeGoals < p.awayGoals) ||
-      (m.homeGoals === m.awayGoals && p.homeGoals === p.awayGoals)
-    );
-  });
-
-  const achievementFlags = [hasCravador, hasSequencia, hasTop10, hasVeterano, hasDefensor, hasGoleada];
-  const unlockedAchievements = ACHIEVEMENTS.map((a, i) => ({ ...a, unlocked: achievementFlags[i] }));
+  const achievementStats: AchievementStats = { exactScores, maxStreak, zebraWins, matchesWithPoints };
+  const unlockedTypes = new Set(dbAchievements.map((a) => a.type));
+  const totalAchievementsUnlocked = dbAchievements.length;
+  const totalAchievements = ACHIEVEMENT_GROUPS.reduce((s, g) => s + g.levels.length, 0);
 
   return (
     <div className="space-y-4">
@@ -344,13 +418,24 @@ export default async function PerfilPage() {
         <div className="flex justify-between items-center mb-3">
           <span className="font-bold text-sm" style={{ color: "#f3f6fb" }}>Conquistas</span>
           <span style={{ fontSize: 11, color: "#C9A84C", fontWeight: 600 }}>
-            {unlockedAchievements.filter((a) => a.unlocked).length} de {ACHIEVEMENTS.length}
+            {totalAchievementsUnlocked} de {totalAchievements}
           </span>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-          {unlockedAchievements.map((a) => (
-            <AchievementCard key={a.label} {...a} />
-          ))}
+          {ACHIEVEMENT_GROUPS.map((group) => {
+            const unlockedLevel = group.levels.reduce(
+              (lvl, l, i) => (unlockedTypes.has(l.type) ? i + 1 : lvl),
+              0
+            );
+            return (
+              <AchievementCard
+                key={group.key}
+                group={group}
+                unlockedLevel={unlockedLevel}
+                progress={group.progressValue(achievementStats)}
+              />
+            );
+          })}
         </div>
       </section>
 

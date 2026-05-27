@@ -266,18 +266,15 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
   }
 
   // Recalculate overall rank for PARTICIPANT users only (admins excluded)
-  const allScores = await db.userScore.findMany({
-    where: { user: { role: "PARTICIPANT" } },
-    orderBy: { totalPoints: "desc" },
-    select: { id: true },
-  });
+  await recalculateRanking();
 
-  for (let i = 0; i < allScores.length; i++) {
-    await db.userScore.update({
-      where: { id: allScores[i].id },
-      data: { overallRank: i + 1 },
-    });
+  // Check and grant achievements for affected users (may add bonus points)
+  for (const userId of affectedUserIds) {
+    await checkAndGrantAchievements(userId);
   }
+
+  // Recalculate ranking again to account for any achievement bonus points
+  await recalculateRanking();
 
   return { calculated };
 }
@@ -319,6 +316,124 @@ export async function syncOdds(): Promise<{
   }
 
   return { updated, skipped, source: "the-odds-api", requestsRemaining, unmapped };
+}
+
+// ─── Achievement metadata ─────────────────────────────────────────────────────
+
+const ACHIEVEMENT_DISPLAY: Record<string, { label: string; sub: string }> = {
+  CRAVADOR_I:           { label: "Cravador I",          sub: "1 placar exato" },
+  CRAVADOR_II:          { label: "Cravador II",         sub: "5 placares exatos" },
+  CRAVADOR_III:         { label: "Cravador III",        sub: "10 placares exatos" },
+  SEQUENCIA_QUENTE_I:   { label: "Em Chamas I",         sub: "3 acertos seguidos" },
+  SEQUENCIA_QUENTE_II:  { label: "Em Chamas II",        sub: "5 acertos seguidos" },
+  SEQUENCIA_QUENTE_III: { label: "Em Chamas III",       sub: "7 acertos seguidos" },
+  REI_DAS_ZEBRAS_I:     { label: "Rei das Zebras I",    sub: "1 vitória improvável" },
+  REI_DAS_ZEBRAS_II:    { label: "Rei das Zebras II",   sub: "3 vitórias improváveis" },
+  REI_DAS_ZEBRAS_III:   { label: "Rei das Zebras III",  sub: "5 vitórias improváveis" },
+  INVENCIVEL_I:         { label: "Invencível I",        sub: "10 jogos pontuados" },
+  INVENCIVEL_II:        { label: "Invencível II",       sub: "20 jogos pontuados" },
+  INVENCIVEL_III:       { label: "Invencível III",      sub: "30 jogos pontuados" },
+};
+
+/**
+ * Checks and grants any newly earned achievements for a user.
+ * Awards bonus points and creates a notification for each new unlock.
+ * Called after points are calculated so all data is fresh.
+ */
+export async function checkAndGrantAchievements(userId: string): Promise<void> {
+  const [userScore, predictions] = await Promise.all([
+    db.userScore.findUnique({ where: { userId } }),
+    db.prediction.findMany({
+      where: { userId, match: { status: "FINISHED" } },
+      select: {
+        totalPoints: true,
+        match: {
+          select: { homeGoals: true, awayGoals: true, homeWinProb: true, awayWinProb: true, kickoff: true },
+        },
+      },
+      orderBy: { match: { kickoff: "asc" } },
+    }),
+  ]);
+
+  if (!userScore) return;
+
+  // Compute streak, zebra, and invincible metrics
+  let maxStreak = 0;
+  let curStreak = 0;
+  let zebraWins = 0;
+  let matchesWithPoints = 0;
+
+  for (const pred of predictions) {
+    const m = pred.match;
+    if (m.homeGoals === null || m.awayGoals === null) continue;
+
+    const pts = pred.totalPoints ?? 0;
+    if (pts > 0) {
+      curStreak++;
+      maxStreak = Math.max(maxStreak, curStreak);
+      matchesWithPoints++;
+
+      // Zebra: underdog (prob < 15%) won and user predicted it correctly
+      const realHomeWin = m.homeGoals > m.awayGoals;
+      const realAwayWin = m.homeGoals < m.awayGoals;
+      const homeProb = m.homeWinProb ? Number(m.homeWinProb) : 34;
+      const awayProb = m.awayWinProb ? Number(m.awayWinProb) : 33;
+      if (realHomeWin && homeProb < 15) zebraWins++;
+      else if (realAwayWin && awayProb < 15) zebraWins++;
+    } else {
+      curStreak = 0;
+    }
+  }
+
+  const criteria = [
+    { type: "CRAVADOR_I",           level: 1, bonus: 5,  met: userScore.exactScores >= 1  },
+    { type: "CRAVADOR_II",          level: 2, bonus: 10, met: userScore.exactScores >= 5  },
+    { type: "CRAVADOR_III",         level: 3, bonus: 20, met: userScore.exactScores >= 10 },
+    { type: "SEQUENCIA_QUENTE_I",   level: 1, bonus: 5,  met: maxStreak >= 3 },
+    { type: "SEQUENCIA_QUENTE_II",  level: 2, bonus: 10, met: maxStreak >= 5 },
+    { type: "SEQUENCIA_QUENTE_III", level: 3, bonus: 15, met: maxStreak >= 7 },
+    { type: "REI_DAS_ZEBRAS_I",     level: 1, bonus: 10, met: zebraWins >= 1 },
+    { type: "REI_DAS_ZEBRAS_II",    level: 2, bonus: 20, met: zebraWins >= 3 },
+    { type: "REI_DAS_ZEBRAS_III",   level: 3, bonus: 30, met: zebraWins >= 5 },
+    { type: "INVENCIVEL_I",         level: 1, bonus: 5,  met: matchesWithPoints >= 10 },
+    { type: "INVENCIVEL_II",        level: 2, bonus: 10, met: matchesWithPoints >= 20 },
+    { type: "INVENCIVEL_III",       level: 3, bonus: 20, met: matchesWithPoints >= 30 },
+  ];
+
+  const existing = await db.userAchievement.findMany({
+    where: { userId },
+    select: { type: true },
+  });
+  const existingTypes = new Set(existing.map((a) => a.type));
+
+  let totalBonusAdded = 0;
+  for (const c of criteria) {
+    if (c.met && !existingTypes.has(c.type)) {
+      await db.userAchievement.create({
+        data: { userId, type: c.type, level: c.level, pointsBonus: c.bonus },
+      });
+      totalBonusAdded += c.bonus;
+
+      const meta = ACHIEVEMENT_DISPLAY[c.type];
+      if (meta) {
+        await db.notification.create({
+          data: {
+            userId,
+            title: "Conquista desbloqueada!",
+            message: `${meta.label}: ${meta.sub} (+${c.bonus} pts bônus)`,
+            type: `achievement:${c.type}`,
+          },
+        });
+      }
+    }
+  }
+
+  if (totalBonusAdded > 0) {
+    await db.userScore.update({
+      where: { userId },
+      data: { totalPoints: { increment: totalBonusAdded } },
+    });
+  }
 }
 
 /**
