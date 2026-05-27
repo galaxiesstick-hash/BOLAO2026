@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { sendPaymentApprovedEmail } from "@/lib/email";
 
 export async function POST(
   _req: Request,
@@ -16,7 +17,7 @@ export async function POST(
 
   const payment = await db.payment.findUnique({
     where: { id },
-    include: { user: { select: { id: true } } },
+    include: { user: { select: { id: true, name: true, email: true } } },
   });
 
   if (!payment) {
@@ -48,6 +49,10 @@ export async function POST(
       },
     }),
   ]);
+
+  // Send welcome email (non-blocking)
+  sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name })
+    .catch(err => console.error("[admin/aprovar] Email error:", err));
 
   return NextResponse.json({ success: true });
 }

@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     ],
   },
   // Silence Prisma warnings in Next.js
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer"],
 };
 
 export default nextConfig;
