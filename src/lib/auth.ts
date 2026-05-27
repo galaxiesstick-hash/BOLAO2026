@@ -17,6 +17,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+      allowDangerousEmailAccountLinking: true,
     }),
     Credentials({
       name: "credentials",
@@ -50,12 +51,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  events: {
+    // Fires AFTER the adapter inserts the new user row — safe to create FK-dependent records
+    async createUser({ user }) {
+      if (!user.id) return;
+      // Re-read role from DB — admin accounts must never get participant records
+      const dbUser = await db.user.findUnique({ where: { id: user.id as string }, select: { role: true } });
+      if (dbUser?.role === "ADMIN") return;
+      await Promise.all([
+        db.payment.create({ data: { userId: user.id } }),
+        db.userScore.create({ data: { userId: user.id } }),
+      ]);
+    },
+  },
   callbacks: {
     async jwt({ token, user, trigger, session }) {
-      if (user) {
+      if (user?.id) {
         token.id = user.id;
-        token.role = (user as { role?: string }).role ?? "PARTICIPANT";
-        token.avatarUrl = (user as { avatarUrl?: string }).avatarUrl ?? null;
+        // Fetch DB row to get role + avatarUrl (adapter doesn't forward custom fields)
+        const dbUser = await db.user.findUnique({ where: { id: user.id as string } });
+        token.role = dbUser?.role ?? "PARTICIPANT";
+        token.avatarUrl = dbUser?.avatarUrl ?? dbUser?.image ?? null;
       }
 
       if (trigger === "update" && session) {
@@ -72,28 +88,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.avatarUrl = token.avatarUrl as string | null;
       }
       return session;
-    },
-    async signIn({ user, account }) {
-      // For Google OAuth: create payment record and score if first time
-      if (account?.provider === "google" && user.id) {
-        const existingPayment = await db.payment.findUnique({
-          where: { userId: user.id },
-        });
-        if (!existingPayment) {
-          await db.payment.create({
-            data: { userId: user.id },
-          });
-        }
-        const existingScore = await db.userScore.findUnique({
-          where: { userId: user.id },
-        });
-        if (!existingScore) {
-          await db.userScore.create({
-            data: { userId: user.id },
-          });
-        }
-      }
-      return true;
     },
   },
 });

@@ -20,6 +20,7 @@ export default async function AdminPagamentosPage() {
         include: {
           user: { select: { id: true, name: true, email: true, createdAt: true } },
         },
+        // include efiTxId and amount so admin can see which have a detected PIX
       }),
       db.payment.findMany({
         where: { status: "APPROVED" },
@@ -49,6 +50,8 @@ export default async function AdminPagamentosPage() {
       registeredAt: p.user.createdAt.toISOString(),
       createdAt: p.createdAt.toISOString(),
       entryFee,
+      pixDetected: !!p.efiTxId,
+      pixAmount: p.amount ? Number(p.amount) : null,
     })),
     approved: approvedPayments.map((p) => ({
       id: p.id,

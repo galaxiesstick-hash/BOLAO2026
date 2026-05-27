@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Bebas_Neue, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const bebasNeue = Bebas_Neue({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-bebas",
+});
+const jetbrainsMono = JetBrains_Mono({
+  weight: ["500", "700"],
+  subsets: ["latin"],
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
-  title: "Bolão Copa 2026",
+  title: "Bolão Lamparão · Copa 2026",
   description: "Bolão oficial da Copa do Mundo FIFA 2026",
   manifest: "/manifest.json",
 };
@@ -24,7 +34,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`${inter.className} min-h-full`}>{children}</body>
+      <body
+        className={`${inter.variable} ${bebasNeue.variable} ${jetbrainsMono.variable} min-h-full`}
+        style={{ fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)" }}
+      >
+        {children}
+      </body>
     </html>
   );
 }

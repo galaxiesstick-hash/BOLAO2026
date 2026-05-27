@@ -85,6 +85,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Admin accounts cannot place bets
+  if (session.user.role === "ADMIN") {
+    return NextResponse.json({ error: "Conta admin não participa do bolão" }, { status: 403 });
+  }
+
   // Check user has approved payment
   const payment = await db.payment.findUnique({
     where: { userId: session.user.id },

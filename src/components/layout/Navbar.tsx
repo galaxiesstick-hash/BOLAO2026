@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
+import { LampLogo } from "@/components/ui/LampMark";
 import { cn } from "@/lib/utils";
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -14,6 +15,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/perguntas": "Perguntas",
   "/como-funciona": "Como Funciona",
   "/perfil": "Meu Perfil",
+  "/configuracoes": "Configurações",
   "/pagamento": "Pagamento",
   "/admin": "Painel Admin",
 };
@@ -25,48 +27,57 @@ interface NavbarProps {
 
 export default function Navbar({ unreadCount = 0, isAdmin = false }: NavbarProps) {
   const pathname = usePathname();
-  const title =
-    ROUTE_TITLES[pathname] ??
-    Object.entries(ROUTE_TITLES).find(([k]) => pathname.startsWith(k))?.[1] ??
-    "Bolão 2026";
 
   return (
     <header className="sticky top-0 z-40">
-      <div className="glass-card rounded-none rounded-b-2xl border-t-0 px-4 py-3">
+      <div
+        className="px-4 py-3"
+        style={{
+          background: "linear-gradient(180deg, rgba(10,22,40,0.96) 0%, rgba(10,22,40,0.72) 75%, rgba(10,22,40,0) 100%)",
+          backdropFilter: "blur(16px)",
+        }}
+      >
         <div className="flex items-center justify-between max-w-lg mx-auto">
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-xl">⚽</span>
-            <span className="font-bold text-sm gradient-text">Copa 2026</span>
+          <Link href="/dashboard">
+            <LampLogo compact />
           </Link>
-
-          {/* Page title */}
-          <h1 className="text-sm font-semibold text-white absolute left-1/2 -translate-x-1/2">
-            {title}
-          </h1>
 
           {/* Actions */}
           <div className="flex items-center gap-2">
+            {/* Notification bell */}
             <Link
               href="/notificacoes"
               className={cn(
-                "relative p-1.5 rounded-lg transition-colors",
-                "text-slate-400 hover:text-white hover:bg-white/10"
+                "relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                "text-[rgba(231,238,250,0.62)] hover:text-white"
               )}
+              style={{ background: "#15263f", border: "1px solid rgba(255,255,255,0.07)" }}
             >
-              <Bell className="w-5 h-5" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M6 8a6 6 0 0 1 12 0v5l1.5 3h-15L6 13V8z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                />
+                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#E61D25] rounded-full text-[10px] font-bold text-white flex items-center justify-center">
+                <span className="absolute top-1.5 right-1.5 min-w-[14px] h-3.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5"
+                  style={{ background: "#E61D25", border: "2px solid #15263f" }}>
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </Link>
+
             {isAdmin && (
               <Link
                 href="/admin"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[rgba(231,238,250,0.62)] hover:text-white transition-colors"
+                style={{ background: "#15263f", border: "1px solid rgba(255,255,255,0.07)" }}
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4" />
               </Link>
             )}
           </div>

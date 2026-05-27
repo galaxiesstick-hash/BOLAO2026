@@ -15,26 +15,19 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  // Admin users bypass payment check — redirect them to admin panel
-  if (session.user.role === "ADMIN") {
-    // Admin can still view the user-facing pages; no payment required
-  } else {
-    // Check payment approval for regular participants
-    const payment = await db.payment.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!payment || payment.status !== "APPROVED") {
-      redirect("/pagamento");
-    }
-  }
-
-  // Unread notifications count
-  const unreadCount = await db.notification.count({
-    where: { userId: session.user.id, read: false },
-  });
-
   const isAdmin = session.user.role === "ADMIN";
+
+  // Run payment check + unread count in parallel
+  const [payment, unreadCount] = await Promise.all([
+    isAdmin
+      ? Promise.resolve(null) // admins bypass payment
+      : db.payment.findUnique({ where: { userId: session.user.id }, select: { status: true } }),
+    db.notification.count({ where: { userId: session.user.id, read: false } }),
+  ]);
+
+  if (!isAdmin && (!payment || payment.status !== "APPROVED")) {
+    redirect("/pagamento");
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

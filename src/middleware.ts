@@ -8,9 +8,14 @@ const PUBLIC_PATHS = [
   "/cadastro",
   "/pagamento",
   "/recuperar-senha",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
   "/api/auth",
   "/api/cron",
   "/api/webhooks",
+  "/api/admin/reseed-matches",
+  "/api/admin/register-efi-webhook",
+  "/api/health",
 ];
 
 const ADMIN_PATHS = ["/admin"];

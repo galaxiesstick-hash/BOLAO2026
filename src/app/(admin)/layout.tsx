@@ -9,10 +9,12 @@ import {
   HelpCircle,
   Settings,
   LogOut,
+  Users,
 } from "lucide-react";
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/participantes", label: "Participantes", icon: Users },
   { href: "/admin/pagamentos", label: "Pagamentos", icon: CreditCard },
   { href: "/admin/jogos", label: "Jogos", icon: Trophy },
   { href: "/admin/probabilidades", label: "Probabilidades", icon: BarChart2 },

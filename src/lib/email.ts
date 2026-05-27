@@ -141,3 +141,128 @@ export async function sendPaymentApprovedEmail(params: {
     html,
   });
 }
+
+export async function sendKickoffReminderEmail(params: {
+  to: string;
+  name: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeFlag: string;
+  awayFlag: string;
+  kickoffStr: string; // e.g. "QUI · 12/06 · 15:00 BRT"
+  matchId: string;
+}) {
+  const { to, name, homeTeam, awayTeam, homeFlag, awayFlag, kickoffStr, matchId } = params;
+  const firstName = name.split(" ")[0];
+  const matchUrl = `https://bolao.bubhug.com/jogos/${matchId}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Palpite pendente — ${homeTeam} × ${awayTeam}</title>
+</head>
+<body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#060f1f;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#C9A84C;width:4px;border-radius:2px;">&nbsp;</td>
+                  <td style="padding-left:10px;">
+                    <div style="font-size:22px;font-weight:900;color:#f3f6fb;letter-spacing:2px;text-transform:uppercase;">BOLÃO</div>
+                    <div style="font-size:11px;color:#C9A84C;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Copa do Mundo 2026</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#0f1d33;border-radius:20px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+
+              <!-- Faixa de alerta -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(201,168,76,0.12);border-bottom:1px solid rgba(201,168,76,0.25);padding:22px 32px;text-align:center;">
+                    <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#C9A84C;text-transform:uppercase;margin-bottom:8px;">⏱ 30 MINUTOS PARA O APITO!</div>
+                    <div style="font-size:20px;font-weight:900;color:#f3f6fb;text-transform:uppercase;margin-bottom:4px;">
+                      ${homeTeam} × ${awayTeam}
+                    </div>
+                    <div style="font-size:12px;color:rgba(231,238,250,0.55);">${kickoffStr}</div>
+                  </td>
+                </tr>
+
+                <!-- Flags + vs -->
+                <tr>
+                  <td style="padding:24px 32px;text-align:center;">
+                    <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                      <tr>
+                        <td style="text-align:center;padding-right:16px;">
+                          <img src="${homeFlag}" width="64" height="46" alt="${homeTeam}" style="border-radius:4px;display:block;margin:0 auto 6px;" />
+                          <div style="font-size:14px;font-weight:800;color:#f3f6fb;letter-spacing:1px;">${homeTeam}</div>
+                        </td>
+                        <td style="padding:0 16px;">
+                          <div style="font-size:26px;font-weight:900;color:#C9A84C;letter-spacing:2px;">VS</div>
+                        </td>
+                        <td style="text-align:center;padding-left:16px;">
+                          <img src="${awayFlag}" width="64" height="46" alt="${awayTeam}" style="border-radius:4px;display:block;margin:0 auto 6px;" />
+                          <div style="font-size:14px;font-weight:800;color:#f3f6fb;letter-spacing:1px;">${awayTeam}</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <p style="margin:20px 0 8px;font-size:14px;color:rgba(231,238,250,0.72);line-height:1.6;">
+                      ${firstName}, você ainda não registrou seu palpite para este jogo!<br/>
+                      Você tem <strong style="color:#C9A84C;">menos de 30 minutos</strong> antes do fechamento.
+                    </p>
+
+                    <!-- Divisor -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
+                      <tr><td style="border-top:1px solid rgba(255,255,255,0.07);height:1px;">&nbsp;</td></tr>
+                    </table>
+
+                    <!-- CTA -->
+                    <a href="${matchUrl}"
+                       style="display:inline-block;padding:14px 40px;background:#E61D25;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;box-shadow:0 8px 24px -6px rgba(230,29,37,0.5);">
+                      FAZER PALPITE →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Rodapé -->
+          <tr>
+            <td style="padding-top:24px;text-align:center;">
+              <p style="margin:0 0 6px;font-size:11px;color:rgba(231,238,250,0.28);">
+                Bolão Copa do Mundo 2026 · bolao.bubhug.com
+              </p>
+              <p style="margin:0;font-size:11px;color:rgba(231,238,250,0.18);">
+                Você recebeu este e-mail por não ter registrado palpite 30 minutos antes do jogo.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? "Bolão Copa 2026 <contatobubhug@gmail.com>",
+    to,
+    subject: `⏱ 30min para fechar! ${homeTeam} × ${awayTeam} — Bolão Copa 2026`,
+    html,
+  });
+}

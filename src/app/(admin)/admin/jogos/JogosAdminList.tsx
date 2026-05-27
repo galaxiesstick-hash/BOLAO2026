@@ -4,6 +4,7 @@ import { useState } from "react";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import JogoResultadoModal from "@/components/admin/JogoResultadoModal";
+import { getFlagUrl } from "@/lib/utils";
 
 interface Match {
   id: string;
@@ -61,19 +62,23 @@ export default function JogosAdminList({ matches }: { matches: Match[] }) {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-white truncate">
-                  {match.homeTeam.flag} {match.homeTeam.code}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getFlagUrl(match.homeTeam.flag, 40)} alt={match.homeTeam.name} className="w-6 h-4 object-cover rounded-sm" />
+                  <span className="text-sm font-semibold text-white">{match.homeTeam.name}</span>
+                </div>
                 {match.score ? (
                   <span className="text-sm font-bold text-[#C9A84C] tabular-nums">
                     {match.score.home} – {match.score.away}
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-500">vs</span>
+                  <span className="text-xs text-slate-500 px-1">vs</span>
                 )}
-                <span className="text-sm font-semibold text-white truncate">
-                  {match.awayTeam.code} {match.awayTeam.flag}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold text-white">{match.awayTeam.name}</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getFlagUrl(match.awayTeam.flag, 40)} alt={match.awayTeam.name} className="w-6 h-4 object-cover rounded-sm" />
+                </div>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 {match.predictionsCount} palpites

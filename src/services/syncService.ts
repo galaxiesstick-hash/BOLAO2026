@@ -1,6 +1,94 @@
 import { db } from "@/lib/db";
 import { calculateScore } from "@/lib/scoring";
-import { fetchLiveMatches, fetchMatchesByDate, mapStatus } from "./footballApi";
+import {
+  fetchAllCompetitionMatches,
+  fetchLiveMatches,
+  fetchMatchesByDate,
+  mapGroup,
+  mapPhase,
+  mapStatus,
+  mapTeam,
+} from "./footballApi";
+
+const FLAG = (code: string) => (code ? `https://flagcdn.com/w80/${code}.png` : "");
+
+// Syncs knockout matches: creates new ones and updates TBD placeholders once teams are known.
+// Called by the CRON sync endpoint so knockout matches appear progressively as teams advance.
+export async function syncNewMatches(): Promise<{ created: number; updated: number }> {
+  let apiMatches;
+  try {
+    apiMatches = await fetchAllCompetitionMatches();
+  } catch {
+    return { created: 0, updated: 0 };
+  }
+
+  // Get all existing matches indexed by externalId
+  const existing = await db.match.findMany({
+    select: { id: true, externalId: true, homeTeamCode: true, awayTeamCode: true },
+  });
+  const existingByExtId = new Map(existing.map((m) => [m.externalId, m]));
+
+  let created = 0;
+  let updated = 0;
+
+  for (const m of apiMatches) {
+    const exId = String(m.id);
+    const homeTla = m.homeTeam.tla || null;
+    const awayTla = m.awayTeam.tla || null;
+    const dbMatch = existingByExtId.get(exId);
+
+    if (!dbMatch) {
+      // New match not in DB yet — insert it (even if TBD)
+      const home = mapTeam(homeTla, m.homeTeam.name);
+      const away = mapTeam(awayTla, m.awayTeam.name);
+      try {
+        await db.match.create({
+          data: {
+            externalId: exId,
+            phase: mapPhase(m.stage),
+            group: mapGroup(m.group),
+            kickoff: new Date(m.utcDate),
+            venue: m.venue ?? null,
+            homeTeamCode: homeTla ?? "TBD",
+            homeTeamName: home.ptName,
+            homeTeamFlag: FLAG(home.flagCode),
+            awayTeamCode: awayTla ?? "TBD",
+            awayTeamName: away.ptName,
+            awayTeamFlag: FLAG(away.flagCode),
+            status: mapStatus(m.status),
+            homeGoals: m.score.fullTime.home ?? null,
+            awayGoals: m.score.fullTime.away ?? null,
+          },
+        });
+        created++;
+      } catch {
+        // skip on constraint errors
+      }
+    } else if (
+      (dbMatch.homeTeamCode === "TBD" && homeTla) ||
+      (dbMatch.awayTeamCode === "TBD" && awayTla)
+    ) {
+      // Existing match had TBD teams; update now that real teams are known
+      const home = mapTeam(homeTla, m.homeTeam.name);
+      const away = mapTeam(awayTla, m.awayTeam.name);
+      await db.match.update({
+        where: { id: dbMatch.id },
+        data: {
+          kickoff: new Date(m.utcDate),
+          homeTeamCode: homeTla ?? dbMatch.homeTeamCode,
+          homeTeamName: home.ptName,
+          homeTeamFlag: FLAG(home.flagCode),
+          awayTeamCode: awayTla ?? dbMatch.awayTeamCode,
+          awayTeamName: away.ptName,
+          awayTeamFlag: FLAG(away.flagCode),
+        },
+      });
+      updated++;
+    }
+  }
+
+  return { created, updated };
+}
 
 export interface SyncResult {
   updated: number;
@@ -96,18 +184,18 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
     });
 
     for (const pred of predictions) {
-      const probPercent = match.homeWinProb
-        ? Number(match.homeWinProb)
-        : match.awayWinProb
-        ? Number(match.awayWinProb)
-        : 33;
+      const homeProb = match.homeWinProb ? Number(match.homeWinProb) : 33.33;
+      const drawProb = match.drawProb    ? Number(match.drawProb)    : 33.33;
+      const awayProb = match.awayWinProb ? Number(match.awayWinProb) : 33.33;
 
       const result = calculateScore(
         pred.homeGoals,
         pred.awayGoals,
         match.homeGoals,
         match.awayGoals,
-        probPercent
+        homeProb,
+        drawProb,
+        awayProb,
       );
 
       await db.prediction.update({
@@ -116,7 +204,7 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
           basePoints: result.basePoints,
           bonusPoints: result.bonusPoints,
           totalPoints: result.totalPoints,
-          breakdown: result.breakdown as unknown as Record<string, boolean>,
+          breakdown: { accuracyType: result.accuracyType },
         },
       });
 
@@ -140,13 +228,15 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
       _count: { id: true },
     });
 
+    // EXACT predictions
     const exactScores = await db.prediction.count({
       where: {
         userId,
-        breakdown: { path: ["exactScore"], equals: true },
+        breakdown: { path: ["accuracyType"], equals: "EXACT" },
       },
     });
 
+    // EXACT + ALMOST_EXACT + WINNER_ONLY count as "correct winner"
     const correctWinners = await db.prediction.count({
       where: {
         userId,
@@ -174,8 +264,9 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
     });
   }
 
-  // Recalculate overall rank for all users
+  // Recalculate overall rank for PARTICIPANT users only (admins excluded)
   const allScores = await db.userScore.findMany({
+    where: { user: { role: "PARTICIPANT" } },
     orderBy: { totalPoints: "desc" },
     select: { id: true },
   });
@@ -192,4 +283,23 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
 
 export async function syncOdds(): Promise<{ updated: number; source: string }> {
   return { updated: 0, source: "manual" };
+}
+
+/**
+ * Re-numbers overallRank for all PARTICIPANT users by totalPoints desc.
+ * Call this whenever points change outside of normal match scoring.
+ */
+export async function recalculateRanking(): Promise<void> {
+  const allScores = await db.userScore.findMany({
+    where: { user: { role: "PARTICIPANT" } },
+    orderBy: { totalPoints: "desc" },
+    select: { id: true },
+  });
+
+  for (let i = 0; i < allScores.length; i++) {
+    await db.userScore.update({
+      where: { id: allScores[i].id },
+      data: { overallRank: i + 1 },
+    });
+  }
 }

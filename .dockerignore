@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env*.local
+*.log
+backups
+README.md
+PRD.md
+SPEC.md
+AGENTS.md
+CLAUDE.md
+docker-compose.yml

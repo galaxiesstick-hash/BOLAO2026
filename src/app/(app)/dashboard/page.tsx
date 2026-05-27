@@ -2,16 +2,46 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Card } from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
-import { formatMatchDate, getFlagUrl, getInitials } from "@/lib/utils";
-import { Trophy, Target, TrendingUp, Zap, ChevronRight } from "lucide-react";
+import { getFlagUrl, getInitials } from "@/lib/utils";
+import { LampMark } from "@/components/ui/LampMark";
+import CountdownTimer from "./CountdownTimer";
 
 export const dynamic = "force-dynamic";
 
+const TZ = "America/Sao_Paulo";
+
+function formatKickoffBR(date: Date): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TZ,
+  }).format(date);
+}
+
 function ordinalSuffix(n: number): string {
   return `${n}º`;
+}
+
+function StatCard({ value, label, color = "#f3f6fb" }: { value: string; label: string; color?: string }) {
+  return (
+    <div className="text-center">
+      <div
+        className="font-display leading-none tracking-wide"
+        style={{ fontSize: 22, color, letterSpacing: 0.4 }}
+      >
+        {value}
+      </div>
+      <div
+        className="uppercase tracking-wider font-semibold mt-1"
+        style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", letterSpacing: 0.6 }}
+      >
+        {label}
+      </div>
+    </div>
+  );
 }
 
 export default async function DashboardPage() {
@@ -21,8 +51,7 @@ export default async function DashboardPage() {
   const userId = session.user.id;
   const now = new Date();
 
-  // Fetch in parallel
-  const [userScore, upcomingMatches, liveMatches, predictionCount] =
+  const [userScore, upcomingMatches, liveMatches, predictionCount, pendingPredictions] =
     await Promise.all([
       db.userScore.findUnique({ where: { userId } }),
       db.match.findMany({
@@ -35,259 +64,383 @@ export default async function DashboardPage() {
         orderBy: { kickoff: "asc" },
       }),
       db.prediction.count({ where: { userId } }),
+      // Matches without a prediction from user (upcoming, unlocked)
+      db.match.findMany({
+        where: {
+          status: "SCHEDULED",
+          kickoff: { gte: new Date(now.getTime() + 10 * 60 * 1000) }, // not locked
+          NOT: { predictions: { some: { userId } } },
+        },
+        orderBy: { kickoff: "asc" },
+        take: 3,
+      }),
     ]);
 
   const totalPoints = userScore?.totalPoints ?? 0;
   const overallRank = userScore?.overallRank ?? null;
   const exactScores = userScore?.exactScores ?? 0;
+  const totalMatchesBet = predictionCount;
+
+  // Next upcoming match (for countdown card)
+  const nextMatch = upcomingMatches[0] ?? null;
 
   return (
-    <div className="space-y-5">
-      {/* Hero Welcome Card */}
-      <Card glow="green" className="relative overflow-hidden">
-        {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-[#3CAC3B]/10 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-[#C9A84C]/5 translate-y-1/2 -translate-x-1/2 pointer-events-none" />
+    <div className="space-y-4">
+      {/* ── HERO: greeting + points ── */}
+      <div
+        className="rounded-2xl p-5 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #15263f 0%, #0f1d33 60%, #16314f 100%)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        }}
+      >
+        {/* Gold glow top-right */}
+        <div
+          className="absolute top-0 right-0 pointer-events-none"
+          style={{
+            width: 160,
+            height: 160,
+            marginTop: -40,
+            marginRight: -30,
+            background: "radial-gradient(circle, rgba(201,168,76,0.25), rgba(201,168,76,0) 65%)",
+          }}
+        />
 
         <div className="relative">
-          {/* Avatar + Greeting */}
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#3CAC3B] to-[#C9A84C] flex items-center justify-center text-white font-bold text-lg shrink-0">
-              {session.user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={session.user.avatarUrl}
-                  alt={session.user.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              ) : (
-                getInitials(session.user.name ?? "U")
-              )}
-            </div>
+            {/* Avatar — clicável → /perfil */}
+            <Link href="/perfil" className="shrink-0">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg overflow-hidden transition-opacity hover:opacity-80"
+                style={{
+                  background: "radial-gradient(circle at 30% 30%, #3CAC3Bcc, #3CAC3B66)",
+                  border: "2px solid #3CAC3B",
+                  cursor: "pointer",
+                }}
+              >
+                {session.user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={session.user.avatarUrl} alt={session.user.name ?? ""} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="font-display text-xl" style={{ color: "#0a1628" }}>
+                    {getInitials(session.user.name ?? "U")}
+                  </span>
+                )}
+              </div>
+            </Link>
             <div className="flex-1 min-w-0">
-              <p className="text-slate-400 text-xs">Bem-vindo de volta</p>
-              <h2 className="text-white font-bold text-lg leading-tight truncate">
-                Olá, {session.user.name?.split(" ")[0] ?? "Participante"}!
+              <p
+                className="uppercase tracking-widest font-semibold"
+                style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", letterSpacing: 1.4 }}
+              >
+                Eita Lamparão!
+              </p>
+              <h2 className="text-white font-bold leading-tight truncate" style={{ fontSize: 20, letterSpacing: -0.3 }}>
+                Bora, {session.user.name?.split(" ")[0] ?? "Participante"}!
               </h2>
             </div>
+          </div>
+
+          {/* Points + rank */}
+          <div className="flex items-end gap-5">
+            <div>
+              <div className="font-display leading-none" style={{ fontSize: 52, color: "#C9A84C", letterSpacing: 1 }}>
+                {totalPoints}
+              </div>
+              <div
+                className="uppercase tracking-wider font-semibold mt-1"
+                style={{ fontSize: 10, color: "rgba(231,238,250,0.62)", letterSpacing: 0.8 }}
+              >
+                pontos totais
+              </div>
+            </div>
+
             {overallRank && (
-              <Badge variant="gold" className="shrink-0">
-                <Trophy className="w-3 h-3" />
-                {ordinalSuffix(overallRank)} lugar
-              </Badge>
+              <>
+                <div className="self-stretch" style={{ width: 1, background: "rgba(255,255,255,0.07)", margin: "4px 0" }} />
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display leading-none" style={{ fontSize: 30, color: "#f3f6fb" }}>
+                      #{overallRank}
+                    </span>
+                  </div>
+                  <div
+                    className="uppercase tracking-wider font-semibold mt-1"
+                    style={{ fontSize: 10, color: "rgba(231,238,250,0.62)", letterSpacing: 0.8 }}
+                  >
+                    no ranking
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── LIVE MATCHES ── */}
+      {liveMatches.length > 0 && (
+        <section>
+          {liveMatches.map((match) => (
+            <div
+              key={match.id}
+              className="rounded-2xl p-4 relative overflow-hidden mb-2"
+              style={{
+                background: "linear-gradient(135deg, rgba(230,29,37,0.18) 0%, #15263f 60%)",
+                border: "1px solid rgba(230,29,37,0.33)",
+              }}
+            >
+              {/* corner glow */}
+              <div
+                className="absolute top-0 right-0 pointer-events-none"
+                style={{
+                  width: 100,
+                  height: 100,
+                  marginTop: -20,
+                  marginRight: -20,
+                  background: "radial-gradient(circle, rgba(230,29,37,0.35), transparent 70%)",
+                }}
+              />
+
+              <div className="flex justify-between items-center mb-3 relative">
+                <div
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"
+                  style={{ background: "rgba(230,29,37,0.12)", border: "1px solid rgba(230,29,37,0.4)" }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full animate-lamp"
+                    style={{ background: "#E61D25", boxShadow: "0 0 8px #E61D25" }}
+                  />
+                  <span
+                    className="font-bold uppercase tracking-wider"
+                    style={{ fontSize: 9.5, color: "#E61D25", letterSpacing: 0.6 }}
+                  >
+                    AO VIVO
+                  </span>
+                </div>
+                {match.minute && (
+                  <span className="font-mono font-bold" style={{ fontSize: 10.5, color: "#f3f6fb" }}>
+                    {match.minute}&apos;
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 items-center gap-2">
+                <div className="flex flex-col items-center gap-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getFlagUrl(match.homeTeamFlag, 80)} alt={match.homeTeamName} className="w-11 h-8 object-cover rounded" />
+                  <span className="text-white font-bold text-xs text-center leading-tight max-w-[70px]">{match.homeTeamName}</span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="font-display text-4xl text-white leading-none">{match.homeGoals ?? 0}</span>
+                  <span className="text-slate-500 text-lg font-light">:</span>
+                  <span className="font-display text-4xl text-white leading-none">{match.awayGoals ?? 0}</span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getFlagUrl(match.awayTeamFlag, 80)} alt={match.awayTeamName} className="w-11 h-8 object-cover rounded" />
+                  <span className="text-white font-bold text-xs text-center leading-tight max-w-[70px]">{match.awayTeamName}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* ── NEXT MATCH CARD (countdown) ── */}
+      {nextMatch && liveMatches.length === 0 && (
+        <div
+          className="rounded-2xl p-4 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, rgba(60,172,59,0.18) 0%, rgba(15,29,51,0.6) 55%, rgba(42,57,141,0.22) 100%)",
+            border: "1px solid rgba(60,172,59,0.35)",
+          }}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-1.5">
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: "#3CAC3B", boxShadow: "0 0 8px #3CAC3B" }}
+              />
+              <span
+                className="font-bold uppercase tracking-wider"
+                style={{ fontSize: 10.5, color: "#3CAC3B", letterSpacing: 1.2 }}
+              >
+                PRÓXIMA APOSTA
+              </span>
+            </div>
+            {nextMatch.group && (
+              <span
+                className="font-mono font-bold uppercase tracking-wider"
+                style={{ fontSize: 10.5, color: "rgba(231,238,250,0.38)", letterSpacing: 0.6 }}
+              >
+                GRUPO {nextMatch.group}
+              </span>
             )}
           </div>
 
-          {/* Points display */}
-          <div className="flex items-end gap-2">
-            <span className="text-5xl font-black gradient-text tabular-nums">
-              {totalPoints}
-            </span>
-            <span className="text-slate-400 text-sm mb-2">pontos totais</span>
+          <div className="grid grid-cols-3 items-center gap-3">
+            <div className="flex flex-col items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={getFlagUrl(nextMatch.homeTeamFlag, 80)} alt={nextMatch.homeTeamName} className="w-14 h-10 object-cover rounded shadow-md" />
+              <span className="font-bold text-sm text-white text-center">{nextMatch.homeTeamName}</span>
+            </div>
+            <div className="text-center">
+              <div className="font-display text-4xl leading-none tracking-wider" style={{ color: "#C9A84C" }}>VS</div>
+              <div className="text-[10px] mt-1" style={{ color: "rgba(231,238,250,0.38)" }}>
+                {new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(nextMatch.kickoff))} BRT
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={getFlagUrl(nextMatch.awayTeamFlag, 80)} alt={nextMatch.awayTeamName} className="w-14 h-10 object-cover rounded shadow-md" />
+              <span className="font-bold text-sm text-white text-center">{nextMatch.awayTeamName}</span>
+            </div>
           </div>
 
-          {overallRank && (
-            <p className="text-slate-400 text-xs mt-1">
-              Você está em{" "}
-              <span className="text-[#C9A84C] font-semibold">
-                {ordinalSuffix(overallRank)} lugar
-              </span>{" "}
-              no ranking geral
-            </p>
-          )}
-        </div>
-      </Card>
+          <CountdownTimer kickoff={nextMatch.kickoff.toISOString()} />
 
-      {/* Live Matches Section */}
-      {liveMatches.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Badge variant="live" className="text-sm px-3 py-1">
-              AO VIVO
-            </Badge>
-            <span className="text-slate-400 text-xs">
-              {liveMatches.length}{" "}
-              {liveMatches.length === 1 ? "jogo acontecendo" : "jogos acontecendo"}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {liveMatches.map((match) => (
-              <Card key={match.id} glow="red" className="p-4">
-                <div className="flex items-center justify-between">
-                  {/* Home team */}
-                  <div className="flex flex-col items-center gap-1.5 flex-1">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getFlagUrl(match.homeTeamFlag, 40)}
-                      alt={match.homeTeamName}
-                      className="w-10 h-7 object-cover rounded shadow-sm"
-                    />
-                    <span className="text-white text-xs font-medium text-center max-w-[70px] truncate">
-                      {match.homeTeamName}
-                    </span>
-                  </div>
-
-                  {/* Score */}
-                  <div className="flex flex-col items-center gap-1 px-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-3xl font-black text-white tabular-nums">
-                        {match.homeGoals ?? 0}
-                      </span>
-                      <span className="text-slate-500 text-lg font-bold">–</span>
-                      <span className="text-3xl font-black text-white tabular-nums">
-                        {match.awayGoals ?? 0}
-                      </span>
-                    </div>
-                    {match.minute && (
-                      <span className="text-red-400 text-xs font-semibold animate-live">
-                        {match.minute}&apos;
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Away team */}
-                  <div className="flex flex-col items-center gap-1.5 flex-1">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getFlagUrl(match.awayTeamFlag, 40)}
-                      alt={match.awayTeamName}
-                      className="w-10 h-7 object-cover rounded shadow-sm"
-                    />
-                    <span className="text-white text-xs font-medium text-center max-w-[70px] truncate">
-                      {match.awayTeamName}
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Upcoming Matches */}
-      {upcomingMatches.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[#3CAC3B]" />
-              Próximos Jogos
-            </h3>
-            <Link
-              href="/jogos"
-              className="text-[#3CAC3B] text-xs font-medium flex items-center gap-0.5 hover:text-[#4dc44c] transition-colors"
+          <Link href={`/jogos/${nextMatch.id}`}>
+            <button
+              className="mt-4 w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+              style={{
+                background: "#3CAC3B",
+                color: "#fff",
+                fontSize: 14,
+                boxShadow: "0 6px 20px -4px rgba(60,172,59,0.55)",
+                border: "none",
+              }}
             >
-              Ver todos
-              <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="space-y-2">
-            {upcomingMatches.map((match) => (
-              <Card key={match.id} className="p-3">
-                <div className="flex items-center gap-3">
-                  {/* Teams */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getFlagUrl(match.homeTeamFlag, 32)}
-                      alt={match.homeTeamName}
-                      className="w-8 h-5.5 object-cover rounded shrink-0"
-                    />
-                    <span className="text-white text-xs font-medium truncate max-w-[55px]">
-                      {match.homeTeamName}
-                    </span>
-                    <span className="text-slate-500 text-xs font-bold shrink-0">x</span>
-                    <span className="text-white text-xs font-medium truncate max-w-[55px]">
-                      {match.awayTeamName}
-                    </span>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getFlagUrl(match.awayTeamFlag, 32)}
-                      alt={match.awayTeamName}
-                      className="w-8 h-5.5 object-cover rounded shrink-0"
-                    />
-                  </div>
-
-                  {/* Date/time */}
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-slate-400 text-[10px] text-right">
-                      {formatMatchDate(match.kickoff)}
-                    </span>
-                  </div>
-
-                  {/* Palpitar button */}
-                  <Link href="/palpites">
-                    <Button size="sm" variant="outline" className="shrink-0 text-xs px-2 py-1">
-                      Palpitar
-                    </Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2" />
+                <circle cx="12" cy="12" r="5" stroke="#fff" strokeWidth="2" />
+                <circle cx="12" cy="12" r="1.5" fill="#fff" />
+              </svg>
+              FAZER PALPITE
+            </button>
+          </Link>
+        </div>
       )}
 
-      {upcomingMatches.length === 0 && liveMatches.length === 0 && (
-        <Card className="text-center py-8">
-          <Trophy className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">Nenhum jogo programado no momento</p>
-        </Card>
-      )}
-
-      {/* Quick Stats */}
+      {/* ── PERFORMANCE STATS ── */}
       <section>
-        <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-[#C9A84C]" />
-          Meu Desempenho
-        </h3>
+        <div className="flex justify-between items-center mb-3">
+          <span className="font-bold text-sm text-white">Seu desempenho</span>
+          <span style={{ fontSize: 11, color: "#C9A84C", fontWeight: 600 }}>Esta Copa</span>
+        </div>
         <div className="grid grid-cols-3 gap-2">
-          <Card className="flex flex-col items-center justify-center py-4 text-center">
-            <Target className="w-5 h-5 text-[#3CAC3B] mb-2" />
-            <span className="text-2xl font-black text-white tabular-nums">
-              {predictionCount}
-            </span>
-            <span className="text-slate-400 text-[10px] mt-0.5 leading-tight">
-              Jogos apostados
-            </span>
-          </Card>
-
-          <Card className="flex flex-col items-center justify-center py-4 text-center">
-            <Zap className="w-5 h-5 text-[#C9A84C] mb-2" />
-            <span className="text-2xl font-black text-white tabular-nums">
-              {exactScores}
-            </span>
-            <span className="text-slate-400 text-[10px] mt-0.5 leading-tight">
-              Acertos exatos
-            </span>
-          </Card>
-
-          <Card className="flex flex-col items-center justify-center py-4 text-center">
-            <Trophy className="w-5 h-5 text-blue-400 mb-2" />
-            <span className="text-2xl font-black text-white tabular-nums">
-              {overallRank ? ordinalSuffix(overallRank) : "–"}
-            </span>
-            <span className="text-slate-400 text-[10px] mt-0.5 leading-tight">
-              Posição geral
-            </span>
-          </Card>
+          {[
+            { v: String(totalMatchesBet), l: "Palpitados", color: "#f3f6fb" },
+            { v: String(exactScores), l: "Cravados", color: "#C9A84C" },
+            { v: overallRank ? ordinalSuffix(overallRank) : "–", l: "Posição geral", color: "#3CAC3B" },
+          ].map((s) => (
+            <div
+              key={s.l}
+              className="rounded-2xl py-4 px-2"
+              style={{ background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <StatCard value={s.v} label={s.l} color={s.color} />
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* Quick actions */}
+      {/* ── PENDING BETS ── */}
+      {pendingPredictions.length > 0 && (
+        <section>
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-bold text-sm text-white">Palpites pendentes</span>
+            <Link href="/palpites">
+              <span style={{ fontSize: 11, color: "#C9A84C", fontWeight: 600 }}>ver todos →</span>
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {pendingPredictions.map((match) => (
+              <Link key={match.id} href={`/jogos/${match.id}`} className="block">
+                <div
+                  className="flex items-center gap-3 p-3 rounded-2xl transition-all hover:opacity-80 active:scale-[0.99]"
+                  style={{
+                    background: "#0f1d33",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {match.group && (
+                    <span
+                      className="font-mono font-bold uppercase w-6 shrink-0"
+                      style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", letterSpacing: 0.4 }}
+                    >
+                      {match.group}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={getFlagUrl(match.homeTeamFlag, 40)} alt={match.homeTeamName} className="w-7 h-5 object-cover rounded shrink-0" />
+                    <span className="text-white font-semibold text-xs truncate">{match.homeTeamName}</span>
+                    <span className="text-[10px] shrink-0" style={{ color: "rgba(231,238,250,0.38)", padding: "0 2px" }}>×</span>
+                    <span className="text-white font-semibold text-xs truncate">{match.awayTeamName}</span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={getFlagUrl(match.awayTeamFlag, 40)} alt={match.awayTeamName} className="w-7 h-5 object-cover rounded shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span
+                      className="font-mono text-right"
+                      style={{ fontSize: 10, color: "rgba(231,238,250,0.38)" }}
+                    >
+                      {formatKickoffBR(match.kickoff)}
+                    </span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path d="M9 18l6-6-6-6" stroke="rgba(201,168,76,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── EMPTY STATE ── */}
+      {upcomingMatches.length === 0 && liveMatches.length === 0 && (
+        <div
+          className="text-center py-10 rounded-2xl"
+          style={{ background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)" }}
+        >
+          <LampMark size={40} />
+          <p className="mt-3 text-sm" style={{ color: "rgba(231,238,250,0.62)" }}>
+            Nenhum jogo programado no momento
+          </p>
+        </div>
+      )}
+
+      {/* ── QUICK ACTIONS ── */}
       <div className="grid grid-cols-2 gap-3">
         <Link href="/palpites" className="block">
-          <Button variant="primary" className="w-full" size="lg">
-            <Target className="w-4 h-4" />
+          <button
+            className="w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+            style={{
+              background: "#3CAC3B",
+              color: "#fff",
+              fontSize: 14,
+              boxShadow: "0 6px 20px -4px rgba(60,172,59,0.55)",
+              border: "none",
+            }}
+          >
             Fazer Palpite
-          </Button>
+          </button>
         </Link>
         <Link href="/ranking" className="block">
-          <Button variant="ghost" className="w-full" size="lg">
-            <Trophy className="w-4 h-4" />
+          <button
+            className="w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-80"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              color: "#f3f6fb",
+              fontSize: 14,
+              border: "1px solid rgba(255,255,255,0.14)",
+            }}
+          >
             Ver Ranking
-          </Button>
+          </button>
         </Link>
       </div>
     </div>

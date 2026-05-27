@@ -1,24 +1,61 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: builder
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://bolao:${DB_PASSWORD}@db:5432/bolao_copa2026
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - bolao-net
+
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
     restart: always
+    ports:
+      - "127.0.0.1:3005:3000"
     environment:
-      DATABASE_URL: postgresql://bolao:${DB_PASSWORD}@db:5432/bolao_copa2026
+      DATABASE_URL: postgresql://bolao:${DB_PASSWORD}@db:5432/bolao_copa2026?connection_limit=10&pool_timeout=20
       AUTH_SECRET: ${AUTH_SECRET}
       NEXTAUTH_URL: https://bolao.bubhug.com
+      AUTH_TRUST_HOST: "true"
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET}
       CRON_SECRET: ${CRON_SECRET}
       FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY}
       API_FOOTBALL_KEY: ${API_FOOTBALL_KEY}
       ODDS_API_KEY: ${ODDS_API_KEY}
+      EFI_CLIENT_ID: ${EFI_CLIENT_ID}
+      EFI_CLIENT_SECRET: ${EFI_CLIENT_SECRET}
+      EFI_PIX_KEY: ${EFI_PIX_KEY}
+      EFI_SANDBOX: ${EFI_SANDBOX}
+      EFI_CERT_BASE64: ${EFI_CERT_BASE64}
+      EFI_CERT_PASSWORD: ${EFI_CERT_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      NODE_OPTIONS: "--max-old-space-size=512"
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - bolao-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   db:
     image: postgres:16-alpine
@@ -38,28 +75,8 @@ services:
     networks:
       - bolao-net
 
-  caddy:
-    image: caddy:2-alpine
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-      - caddy_logs:/var/log/caddy
-    depends_on:
-      - app
-    networks:
-      - bolao-net
-
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:
-  caddy_logs:
 
 networks:
   bolao-net:

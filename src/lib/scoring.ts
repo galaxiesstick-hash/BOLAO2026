@@ -1,154 +1,172 @@
-export interface ScoreBreakdown {
-  exactScore: boolean;
-  winnerScore: boolean;
-  goalDifference: boolean;
-  loserScore: boolean;
-  blowout: boolean;
+/**
+ * Scoring engine — Bolão Copa 2026
+ *
+ * Model:
+ *   - 30 points distributed inversely proportional to probability across the 3 outcomes
+ *   - Bonus depends on accuracy type:
+ *       EXACT          = base + 5   (acertou placar exato)
+ *       ALMOST_EXACT   = base + 3   (acertou vencedor + gols do vencedor)
+ *       WINNER_ONLY    = base + 1   (acertou só o vencedor)
+ *       ONE_SCORE_ONLY = 1 fixed    (acertou exatamente 1 placar, mas errou o vencedor)
+ *       MISS           = 0
+ */
+
+export type MatchAccuracyType =
+  | "EXACT"           // Cravado — placar exato
+  | "ALMOST_EXACT"    // Quase Cravou — vencedor + gols do vencedor certos
+  | "WINNER_ONLY"     // Acerto Parcial — só acertou vencedor
+  | "ONE_SCORE_ONLY"  // Meio Acerto — acertou exatamente 1 dos 2 placares (errou vencedor)
+  | "MISS";           // Errou tudo
+
+export interface MatchOddsPoints {
+  homeWinPoints: number;
+  drawPoints: number;
+  awayWinPoints: number;
 }
 
 export interface ScoringResult {
+  accuracyType: MatchAccuracyType;
   basePoints: number;
   bonusPoints: number;
   totalPoints: number;
-  breakdown: ScoreBreakdown;
 }
 
 /**
- * Calculates base points inversely proportional to probability.
- * Higher probability = fewer base points (favorites give less reward).
- * Lower probability = more base points (upsets give more reward).
+ * Distributes 30 base points inversely proportional to probability.
+ * Lower probability → more points (upsets rewarded more).
  *
- * Examples (from reference app):
- * - Brazil 80% → 6 base pts if Brazil wins
- * - Draw 15%   → 13 base pts if draw
- * - Haiti 5%   → 17 base pts if Haiti wins
+ * Example (33/33/33): → 10 / 10 / 10
+ * Example (70/20/10): → ~3 / 9 / 18
+ *
+ * Falls back to 10/10/10 when probabilities are missing or invalid.
  */
-export function calculateBasePoints(probabilityPercent: number): number {
-  if (!probabilityPercent || probabilityPercent <= 0) return 10;
-  const raw = Math.round(100 / probabilityPercent);
-  return Math.max(3, Math.min(25, raw));
+export function calculateMatchPoints(
+  homeProb: number,
+  drawProb: number,
+  awayProb: number,
+): MatchOddsPoints {
+  if (!homeProb || !drawProb || !awayProb || homeProb <= 0 || drawProb <= 0 || awayProb <= 0) {
+    return { homeWinPoints: 10, drawPoints: 10, awayWinPoints: 10 };
+  }
+
+  const invH = 1 / homeProb;
+  const invD = 1 / drawProb;
+  const invA = 1 / awayProb;
+  const total = invH + invD + invA;
+
+  const home = Math.round(30 * invH / total);
+  const draw = Math.round(30 * invD / total);
+  const away = 30 - home - draw; // ensure exact sum = 30
+
+  // Clamp to [2, 26] so no outcome is worth 0 or basically all points
+  return {
+    homeWinPoints: Math.max(2, Math.min(26, home)),
+    drawPoints: Math.max(2, Math.min(26, draw)),
+    awayWinPoints: Math.max(2, Math.min(26, away)),
+  };
 }
 
 /**
- * Calculates bonus points based on prediction accuracy.
- * Bonuses only apply when the correct outcome (win/draw) was predicted.
+ * Classifies prediction accuracy against the real result.
  */
-export function calculateBonus(
+export function classifyAccuracy(
   predHome: number,
   predAway: number,
   actualHome: number,
-  actualAway: number
-): ScoreBreakdown {
-  const breakdown: ScoreBreakdown = {
-    exactScore: false,
-    winnerScore: false,
-    goalDifference: false,
-    loserScore: false,
-    blowout: false,
-  };
+  actualAway: number,
+): MatchAccuracyType {
+  // EXACT: placar exato
+  if (predHome === actualHome && predAway === actualAway) return "EXACT";
 
-  const actualWinner =
-    actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
-  const predWinner =
-    predHome > predAway ? "home" : predHome < predAway ? "away" : "draw";
+  const actualWinner = actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
+  const predWinner   = predHome  > predAway  ? "home" : predHome  < predAway  ? "away" : "draw";
 
-  // Exact score (+5)
-  if (predHome === actualHome && predAway === actualAway) {
-    breakdown.exactScore = true;
+  if (actualWinner === predWinner) {
+    // Acertou vencedor — verificar se também acertou os gols do vencedor
+    const winnerGoalsCorrect =
+      (actualWinner === "home"  && predHome === actualHome) ||
+      (actualWinner === "away"  && predAway === actualAway) ||
+      (actualWinner === "draw"  && predHome === actualHome); // empate: qualquer placar igual conta
+
+    return winnerGoalsCorrect ? "ALMOST_EXACT" : "WINNER_ONLY";
   }
 
-  // Only calculate remaining bonuses if correct outcome predicted
-  if (actualWinner !== predWinner) return breakdown;
+  // Errou o vencedor — verificar se acertou exatamente 1 placar
+  const homeExact = predHome === actualHome;
+  const awayExact = predAway === actualAway;
+  if (homeExact !== awayExact) return "ONE_SCORE_ONLY"; // XOR: exatamente 1 certo
 
-  // Winner score (+3): got the winning team's goals right
-  if (actualWinner === "home" && predHome === actualHome) {
-    breakdown.winnerScore = true;
-  } else if (actualWinner === "away" && predAway === actualAway) {
-    breakdown.winnerScore = true;
-  } else if (actualWinner === "draw" && predHome === actualHome) {
-    breakdown.winnerScore = true;
-  }
-
-  // Goal difference (+2)
-  if (predHome - predAway === actualHome - actualAway) {
-    breakdown.goalDifference = true;
-  }
-
-  // Loser score (+1): got the losing team's goals right
-  if (actualWinner === "home" && predAway === actualAway) {
-    breakdown.loserScore = true;
-  } else if (actualWinner === "away" && predHome === actualHome) {
-    breakdown.loserScore = true;
-  }
-
-  // Blowout (+1): 3+ goal difference, both predicted and actual
-  const isActualBlowout = Math.abs(actualHome - actualAway) >= 3;
-  const isPredBlowout = Math.abs(predHome - predAway) >= 3;
-  if (isActualBlowout && isPredBlowout) {
-    breakdown.blowout = true;
-  }
-
-  return breakdown;
+  return "MISS";
 }
 
-export function getBonusPoints(breakdown: ScoreBreakdown): number {
-  return (
-    (breakdown.exactScore ? 5 : 0) +
-    (breakdown.winnerScore ? 3 : 0) +
-    (breakdown.goalDifference ? 2 : 0) +
-    (breakdown.loserScore ? 1 : 0) +
-    (breakdown.blowout ? 1 : 0)
-  );
-}
-
+/**
+ * Calculates final score for a prediction.
+ *
+ * homeProb/drawProb/awayProb: probability percentages (e.g., 70, 20, 10).
+ * If probabilities are missing, uses equal distribution (10/10/10).
+ */
 export function calculateScore(
   predHome: number,
   predAway: number,
   actualHome: number,
   actualAway: number,
-  probPercent: number,
-  system: "BALANCED" | "SIMPLE" | "SUPER_SIMPLE" = "BALANCED"
+  homeProb = 33.33,
+  drawProb = 33.33,
+  awayProb = 33.33,
+  system: "BALANCED" | "SIMPLE" | "SUPER_SIMPLE" = "BALANCED",
 ): ScoringResult {
-  const actualWinner =
-    actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
-  const predWinner =
-    predHome > predAway ? "home" : predHome < predAway ? "away" : "draw";
-
+  // Legacy simple modes (kept for compatibility / config option)
   if (system === "SUPER_SIMPLE") {
+    const actualWinner = actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
+    const predWinner   = predHome  > predAway  ? "home" : predHome  < predAway  ? "away" : "draw";
     const correct = actualWinner === predWinner;
-    const breakdown: ScoreBreakdown = {
-      exactScore: false,
-      winnerScore: correct,
-      goalDifference: false,
-      loserScore: false,
-      blowout: false,
+    return {
+      accuracyType: correct ? "WINNER_ONLY" : "MISS",
+      basePoints: 0,
+      bonusPoints: correct ? 1 : 0,
+      totalPoints: correct ? 1 : 0,
     };
-    return { basePoints: 0, bonusPoints: correct ? 1 : 0, totalPoints: correct ? 1 : 0, breakdown };
   }
 
   if (system === "SIMPLE") {
     const isExact = predHome === actualHome && predAway === actualAway;
+    const actualWinner = actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
+    const predWinner   = predHome  > predAway  ? "home" : predHome  < predAway  ? "away" : "draw";
     const isCorrectWinner = actualWinner === predWinner;
-    const points = isExact ? 10 : isCorrectWinner ? 5 : 0;
-    const breakdown: ScoreBreakdown = {
-      exactScore: isExact,
-      winnerScore: isCorrectWinner && !isExact,
-      goalDifference: false,
-      loserScore: false,
-      blowout: false,
+    const pts = isExact ? 10 : isCorrectWinner ? 5 : 0;
+    return {
+      accuracyType: isExact ? "EXACT" : isCorrectWinner ? "WINNER_ONLY" : "MISS",
+      basePoints: pts,
+      bonusPoints: 0,
+      totalPoints: pts,
     };
-    return { basePoints: points, bonusPoints: 0, totalPoints: points, breakdown };
   }
 
-  // BALANCED
-  const breakdown = calculateBonus(predHome, predAway, actualHome, actualAway);
-  const bonusPoints = getBonusPoints(breakdown);
-  const basePoints = calculateBasePoints(probPercent);
+  // BALANCED — default
+  const accuracy = classifyAccuracy(predHome, predAway, actualHome, actualAway);
+  const odds = calculateMatchPoints(homeProb, drawProb, awayProb);
 
+  // Which base points to use depends on what actually happened
+  const actualWinner = actualHome > actualAway ? "home" : actualHome < actualAway ? "away" : "draw";
+  const base =
+    actualWinner === "home" ? odds.homeWinPoints :
+    actualWinner === "away" ? odds.awayWinPoints :
+    odds.drawPoints;
+
+  if (accuracy === "MISS") {
+    return { accuracyType: "MISS", basePoints: 0, bonusPoints: 0, totalPoints: 0 };
+  }
+
+  if (accuracy === "ONE_SCORE_ONLY") {
+    // Fixed 1 point — no base multiplier
+    return { accuracyType: "ONE_SCORE_ONLY", basePoints: 0, bonusPoints: 1, totalPoints: 1 };
+  }
+
+  const bonus = accuracy === "EXACT" ? 5 : accuracy === "ALMOST_EXACT" ? 3 : 1;
   return {
-    basePoints,
-    bonusPoints,
-    totalPoints: basePoints + bonusPoints,
-    breakdown,
+    accuracyType: accuracy,
+    basePoints: base,
+    bonusPoints: bonus,
+    totalPoints: base + bonus,
   };
 }

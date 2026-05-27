@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -54,16 +55,18 @@ enum QuestionType {
 // ==================== MODELS ====================
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String?
-  phone     String?
-  avatarUrl String?  @map("avatar_url")
-  role      UserRole @default(PARTICIPANT)
-  googleId  String?  @unique @map("google_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  password      String?
+  phone         String?
+  avatarUrl     String?   @map("avatar_url")
+  role          UserRole  @default(PARTICIPANT)
+  googleId      String?   @unique @map("google_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   payment       Payment?
   predictions   Prediction[]
@@ -142,6 +145,10 @@ model Payment {
   status          PaymentStatus @default(PENDING)
   amount          Decimal?      @db.Decimal(10, 2)
   pixTxId         String?       @map("pix_tx_id")
+  efiTxId         String?       @unique @map("efi_tx_id")
+  efiLocId        Int?          @map("efi_loc_id")
+  efiQrCode       String?       @map("efi_qr_code") @db.Text
+  efiQrImage      String?       @map("efi_qr_image") @db.Text
   rejectionReason String?       @map("rejection_reason")
   approvedBy      String?       @map("approved_by")
   approvedAt      DateTime?     @map("approved_at")

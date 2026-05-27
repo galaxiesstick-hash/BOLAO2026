@@ -12,11 +12,16 @@ export function formatCurrency(value: number | string | null | undefined): strin
   }).format(num);
 }
 
+// All date formatting uses America/Sao_Paulo so server components (Docker UTC)
+// and client components (browser) show the same Brazil time.
+const TZ = "America/Sao_Paulo";
+
 export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: TZ,
   }).format(new Date(date));
 }
 
@@ -27,6 +32,7 @@ export function formatDateTime(date: Date | string): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: TZ,
   }).format(new Date(date));
 }
 
@@ -34,17 +40,20 @@ export function formatTime(date: Date | string): string {
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: TZ,
   }).format(new Date(date));
 }
 
 export function formatMatchDate(date: Date | string): string {
   const d = new Date(date);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Compare dates in Brazil timezone
+  const nowBR = new Date(new Date().toLocaleString("en-US", { timeZone: TZ }));
+  const dBR = new Date(d.toLocaleString("en-US", { timeZone: TZ }));
 
-  const isToday = d.toDateString() === today.toDateString();
-  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const isToday = dBR.toDateString() === nowBR.toDateString();
+  const tomorrowBR = new Date(nowBR);
+  tomorrowBR.setDate(tomorrowBR.getDate() + 1);
+  const isTomorrow = dBR.toDateString() === tomorrowBR.toDateString();
 
   if (isToday) return `Hoje, ${formatTime(d)}`;
   if (isTomorrow) return `Amanhã, ${formatTime(d)}`;
@@ -55,6 +64,7 @@ export function formatMatchDate(date: Date | string): string {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: TZ,
   }).format(d);
 }
 
@@ -79,6 +89,13 @@ export function getInitials(name: string): string {
     .toUpperCase();
 }
 
-export function getFlagUrl(flagCode: string, width = 80): string {
-  return `https://flagcdn.com/w${width}/${flagCode.toLowerCase()}.png`;
+export function getFlagUrl(flagOrCode: string, width = 80): string {
+  if (!flagOrCode) return "";
+  // If the DB stored a full flagcdn URL, extract the code and rebuild with the requested width
+  const match = flagOrCode.match(/flagcdn\.com\/w\d+\/(.+?)\.png/);
+  if (match) {
+    return `https://flagcdn.com/w${width}/${match[1]}.png`;
+  }
+  // It's a raw code (e.g. "mx", "gb-eng")
+  return `https://flagcdn.com/w${width}/${flagOrCode.toLowerCase()}.png`;
 }

@@ -12,16 +12,12 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search")?.trim() ?? "";
 
   const scores = await db.userScore.findMany({
-    where: search
-      ? {
-          user: {
-            name: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-        }
-      : undefined,
+    where: {
+      user: { role: "PARTICIPANT" },
+      ...(search
+        ? { user: { role: "PARTICIPANT", name: { contains: search, mode: "insensitive" } } }
+        : {}),
+    },
     orderBy: { totalPoints: "desc" },
     include: {
       user: {
@@ -29,6 +25,7 @@ export async function GET(req: NextRequest) {
           id: true,
           name: true,
           avatarUrl: true,
+          image: true,
         },
       },
     },
@@ -38,7 +35,7 @@ export async function GET(req: NextRequest) {
     rank: score.overallRank ?? index + 1,
     userId: score.userId,
     userName: score.user.name,
-    avatarUrl: score.user.avatarUrl,
+    avatarUrl: score.user.avatarUrl ?? score.user.image ?? null,
     totalPoints: score.totalPoints,
     matchesBet: score.matchesBet,
     exactScores: score.exactScores,

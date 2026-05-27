@@ -16,6 +16,8 @@ type PendingPayment = {
   registeredAt: string;
   createdAt: string;
   entryFee: number;
+  pixDetected?: boolean;
+  pixAmount?: number | null;
 };
 
 type ApprovedPayment = PendingPayment & { approvedAt: string | null };
@@ -134,12 +136,21 @@ function PendingRow({ payment }: { payment: PendingPayment }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-white">{payment.userName}</p>
           <p className="text-xs text-slate-400">{payment.userEmail}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="warning">Pendente</Badge>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {payment.pixDetected ? (
+              <Badge variant="success">PIX Detectado</Badge>
+            ) : (
+              <Badge variant="warning">Pendente</Badge>
+            )}
             <span className="text-xs text-slate-500">
               Inscrito em {formatDateTime(payment.registeredAt)}
             </span>
           </div>
+          {payment.pixDetected && (
+            <p className="text-xs text-[#3CAC3B] mt-1">
+              PIX de {formatCurrency(payment.pixAmount != null ? payment.pixAmount : payment.entryFee)} recebido — aguarda aprovação manual
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <p className="text-sm font-semibold text-[#C9A84C]">

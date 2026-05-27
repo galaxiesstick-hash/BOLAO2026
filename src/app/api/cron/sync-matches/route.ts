@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { syncMatchResults, triggerPointsCalculation } from "@/services/syncService";
+import { syncMatchResults, syncNewMatches, triggerPointsCalculation } from "@/services/syncService";
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -9,7 +9,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { updated, finishedMatchIds } = await syncMatchResults();
+    const [{ updated, finishedMatchIds }, { created, updated: knockoutUpdated }] = await Promise.all([
+      syncMatchResults(),
+      syncNewMatches(),
+    ]);
 
     let calculated = 0;
     if (finishedMatchIds.length > 0) {
@@ -23,13 +26,15 @@ export async function POST(req: NextRequest) {
         status: "success",
         source: "football-data.org",
         matchesAffected: updated,
-        details: { finishedMatchIds, calculatedPredictions: calculated },
+        details: { finishedMatchIds, calculatedPredictions: calculated, newMatchesCreated: created, knockoutUpdated },
       },
     });
 
     return Response.json({
       success: true,
       updated,
+      newMatchesCreated: created,
+      knockoutUpdated,
       finishedMatchIds,
       calculatedPredictions: calculated,
     });

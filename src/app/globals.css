@@ -1,32 +1,47 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* FIFA 2026 Color Palette */
-  --color-fifa-green: #3CAC3B;
-  --color-fifa-blue: #2A398D;
-  --color-fifa-red: #E61D25;
-  --color-fifa-gold: #C9A84C;
+  /* Surfaces */
+  --color-bg:        #0a1628;
+  --color-surface1:  #0f1d33;
+  --color-surface2:  #15263f;
+  --color-surface3:  #1c2f4d;
 
-  /* Background */
+  /* FIFA 2026 Color Palette */
+  --color-green:     #3CAC3B;
+  --color-green-soft: rgba(60,172,59,0.14);
+  --color-green-line: rgba(60,172,59,0.35);
+  --color-blue:      #2A398D;
+  --color-blue-accent: #4d62c9;
+  --color-red:       #E61D25;
+  --color-red-soft:  rgba(230,29,37,0.12);
+  --color-gold:      #C9A84C;
+  --color-gold-soft: rgba(201,168,76,0.14);
+  --color-gold-line: rgba(201,168,76,0.45);
+
+  /* Text */
+  --color-text:      #f3f6fb;
+  --color-muted:     rgba(231,238,250,0.62);
+  --color-faint:     rgba(231,238,250,0.38);
+
+  /* Borders */
+  --color-border:    rgba(255,255,255,0.07);
+  --color-border-strong: rgba(255,255,255,0.14);
+
+  /* Backwards-compat aliases */
+  --color-fifa-green: #3CAC3B;
+  --color-fifa-blue:  #2A398D;
+  --color-fifa-red:   #E61D25;
+  --color-fifa-gold:  #C9A84C;
   --color-bg-primary: #0a1628;
   --color-bg-secondary: #0d2137;
   --color-bg-card: rgba(255, 255, 255, 0.05);
-  --color-bg-card-hover: rgba(255, 255, 255, 0.08);
-
-  /* Text */
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-
-  /* Borders */
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-strong: rgba(255, 255, 255, 0.2);
-
-  /* Semantic */
+  --color-text-primary: #f3f6fb;
+  --color-text-secondary: rgba(231,238,250,0.62);
+  --color-text-muted: rgba(231,238,250,0.38);
   --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-live: #ef4444;
+  --color-danger: #E61D25;
+  --color-live: #E61D25;
 }
 
 * {
@@ -38,10 +53,10 @@ html {
 }
 
 body {
-  background: linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%);
+  background: radial-gradient(140% 90% at 50% -10%, #142a4d 0%, #0a1628 55%, #060f1f 100%);
   background-attachment: fixed;
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #f3f6fb;
+  font-family: var(--font-inter, 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
@@ -59,15 +74,31 @@ body {
   border-radius: 3px;
 }
 
-/* Glass card effect */
+/* Glass card effect (legacy) */
 .glass-card {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 16px;
 }
 
-/* Live pulse animation */
+/* Surface cards */
+.surface-card {
+  background: #0f1d33;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+}
+
+/* Lamp pulse animation (live dot / logo) */
+@keyframes lampPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.55; transform: scale(0.85); }
+}
+.animate-lamp {
+  animation: lampPulse 1.4s ease-in-out infinite;
+}
+
+/* Legacy live pulse */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -82,6 +113,16 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* Display font utility */
+.font-display {
+  font-family: var(--font-bebas, 'Bebas Neue', 'Oswald', Impact, sans-serif);
+}
+
+/* Mono font utility */
+.font-mono {
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
 }
 
 /* Bottom nav safe area */
