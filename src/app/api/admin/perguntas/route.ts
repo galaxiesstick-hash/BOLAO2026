@@ -7,7 +7,8 @@ import { z } from "zod";
 
 const schema = z.object({
   text: z.string().min(1).max(500),
-  type: z.enum(["MULTIPLE_CHOICE", "YES_NO", "FREE_TEXT"]),
+  // YES_NO is a frontend alias — stored as MULTIPLE_CHOICE with ["Sim","Não"] options
+  type: z.enum(["MULTIPLE_CHOICE", "YES_NO", "FREE_TEXT", "NUMBER"]),
   pointsValue: z.number().int().min(1).max(20).default(3),
   options: z.array(z.string()).nullable().optional(),
   correctAnswer: z.string().nullable().optional(),
@@ -35,12 +36,16 @@ export async function POST(req: NextRequest) {
 
   const { text, type, pointsValue, options, correctAnswer, matchId, deadline } = parsed.data;
 
+  // Map YES_NO frontend alias → MULTIPLE_CHOICE with preset options
+  const dbType: QuestionType = type === "YES_NO" ? "MULTIPLE_CHOICE" : (type as QuestionType);
+  const dbOptions = type === "YES_NO" ? ["Sim", "Não"] : (options ?? undefined);
+
   const question = await db.question.create({
     data: {
       text,
-      type: type as QuestionType,
+      type: dbType,
       pointsValue,
-      options: options ?? undefined,
+      options: dbOptions,
       correctAnswer: correctAnswer ?? null,
       matchId: matchId ?? null,
       deadline: deadline ? new Date(deadline) : null,

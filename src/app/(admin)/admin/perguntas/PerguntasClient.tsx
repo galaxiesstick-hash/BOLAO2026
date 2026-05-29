@@ -17,12 +17,13 @@ interface Question {
   _count: { answers: number };
 }
 
-type QuestionType = "MULTIPLE_CHOICE" | "YES_NO" | "FREE_TEXT";
+type QuestionType = "MULTIPLE_CHOICE" | "YES_NO" | "FREE_TEXT" | "NUMBER";
 
 const TYPE_LABELS: Record<QuestionType, string> = {
   MULTIPLE_CHOICE: "Múltipla escolha",
   YES_NO: "Sim / Não",
   FREE_TEXT: "Resposta livre",
+  NUMBER: "Número",
 };
 
 export default function PerguntasClient({ questions: initial }: { questions: Question[] }) {
