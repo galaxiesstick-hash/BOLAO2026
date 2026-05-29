@@ -8,8 +8,8 @@ const nextConfig: NextConfig = {
       { hostname: "lh3.googleusercontent.com" },
     ],
   },
-  // Silence Prisma warnings in Next.js
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer"],
+  // Silence Prisma warnings in Next.js; sdk-node-apis-efi needs native TLS (mTLS) — must not be bundled
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer", "sdk-node-apis-efi"],
 };
 
 export default nextConfig;
