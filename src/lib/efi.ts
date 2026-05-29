@@ -15,14 +15,33 @@ const SANDBOX = process.env.EFI_SANDBOX === "true";
 const CLIENT_ID = process.env.EFI_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.EFI_CLIENT_SECRET ?? "";
 export const EFI_PIX_KEY = process.env.EFI_PIX_KEY ?? "";
-const CERT_BASE64 = process.env.EFI_CERT_BASE64 ?? "";
+
+// Prefer PEM format (cert + key separately) — more reliable with Node.js TLS than P12/pfx.
+// EFI_CERT_PEM_B64 = base64 of the PEM certificate (public cert only)
+// EFI_KEY_PEM_B64  = base64 of the PEM private key (no passphrase)
+// Fallback: EFI_CERT_BASE64 = base64 of the P12 bundle (legacy)
+const CERT_PEM_B64 = process.env.EFI_CERT_PEM_B64 ?? "";
+const KEY_PEM_B64  = process.env.EFI_KEY_PEM_B64  ?? "";
+const CERT_P12_B64 = process.env.EFI_CERT_BASE64  ?? "";
 
 function buildClient(): EfiPay {
+  if (CERT_PEM_B64 && KEY_PEM_B64) {
+    // PEM mode: use separate cert + key (best Node.js TLS compatibility)
+    return new EfiPay({
+      sandbox: SANDBOX,
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      certificate: CERT_PEM_B64,
+      pemKey: KEY_PEM_B64,
+      cert_base64: true,
+    });
+  }
+  // Fallback: P12 mode
   return new EfiPay({
     sandbox: SANDBOX,
     client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET,
-    certificate: CERT_BASE64,
+    certificate: CERT_P12_B64,
     cert_base64: true,
   });
 }
@@ -109,7 +128,7 @@ export async function listReceivedPix(inicio: string, fim: string): Promise<Rece
   }
   const efi = buildClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (efi as any).pixListReceived({ inicio, fim });
+  const result = await (efi as any).pixReceivedList({ inicio, fim });
   return (result?.pix ?? []) as ReceivedPix[];
 }
 
@@ -120,6 +139,6 @@ export async function listReceivedPix(inicio: string, fim: string): Promise<Rece
  */
 export function efiConfigured(): boolean {
   const credentialsOk = !!(CLIENT_ID && CLIENT_SECRET && EFI_PIX_KEY);
-  const certOk = SANDBOX || !!CERT_BASE64;
+  const certOk = SANDBOX || !!(CERT_PEM_B64 && KEY_PEM_B64) || !!CERT_P12_B64;
   return credentialsOk && certOk;
 }
