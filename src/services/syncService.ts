@@ -20,7 +20,13 @@ const FLAG = (code: string) => (code ? `https://flagcdn.com/w80/${code}.png` : "
 
 // Syncs knockout matches: creates new ones and updates TBD placeholders once teams are known.
 // Called by the CRON sync endpoint so knockout matches appear progressively as teams advance.
+// Only polls the external API from 2 days before Copa start to avoid burning free-tier credits.
 export async function syncNewMatches(): Promise<{ created: number; updated: number }> {
+  const COPA_API_START = new Date("2026-06-09T00:00:00Z"); // 2 days before kickoff
+  if (Date.now() < COPA_API_START.getTime()) {
+    return { created: 0, updated: 0 };
+  }
+
   let apiMatches;
   try {
     apiMatches = await fetchAllCompetitionMatches();
@@ -102,6 +108,12 @@ export interface SyncResult {
 }
 
 export async function syncMatchResults(): Promise<SyncResult> {
+  // No matches before Copa starts — skip entirely to avoid unnecessary DB queries
+  const COPA_API_START = new Date("2026-06-09T00:00:00Z");
+  if (Date.now() < COPA_API_START.getTime()) {
+    return { updated: 0, finishedMatchIds: [] };
+  }
+
   const now = new Date();
   const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
   const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -174,6 +186,7 @@ export async function syncMatchResults(): Promise<SyncResult> {
  * Covers friendlies and competitions not on football-data.org.
  */
 export async function syncMatchResultsFromApiFootball(): Promise<SyncResult> {
+  // Only query when there are af:-tracked matches active (e.g. during friendlies or after Copa)
   const now = new Date();
   const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
   const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
