@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { getFlagUrl } from "@/lib/utils";
+import { useState, useCallback, useEffect } from "react";
+import { getFlagUrl, formatTime } from "@/lib/utils";
 import { calculateMatchPoints } from "@/lib/scoring";
 
 type Props = {
@@ -15,12 +15,25 @@ type Props = {
   existingPrediction: { homeGoals: number; awayGoals: number } | null;
   locked: boolean;
   matchStatus: string;
+  kickoff: string; // ISO — needed for live polling trigger
+  liveHomeGoals?: number | null;
+  liveAwayGoals?: number | null;
+  liveMinute?: string | null;
   totalPoints: number | null;
   accuracyType?: string | null;
-  // Probabilidades (0-100). Se null → distribuição igual 33/33/33
   homeProb?: number | null;
   drawProb?: number | null;
   awayProb?: number | null;
+};
+
+type PublicPrediction = {
+  userId: string;
+  userName: string;
+  avatarUrl: string | null;
+  homeGoals: number;
+  awayGoals: number;
+  totalPoints: number | null;
+  isCurrentUser: boolean;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -39,7 +52,11 @@ export default function MatchDetailClient({
   awayTeamCode, awayTeamName, awayTeamFlag,
   existingPrediction,
   locked,
-  matchStatus,
+  matchStatus: initialStatus,
+  kickoff,
+  liveHomeGoals: initialHomeGoals,
+  liveAwayGoals: initialAwayGoals,
+  liveMinute: initialMinute,
   totalPoints,
   accuracyType,
   homeProb,
@@ -50,6 +67,50 @@ export default function MatchDetailClient({
   const [homeGoals, setHomeGoals] = useState<number | null>(existingPrediction?.homeGoals ?? null);
   const [awayGoals, setAwayGoals] = useState<number | null>(existingPrediction?.awayGoals ?? null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  // Live score state — polled every 30s when LIVE
+  const [liveStatus, setLiveStatus] = useState(initialStatus);
+  const [liveScore, setLiveScore] = useState<{ home: number; away: number } | null>(
+    initialHomeGoals !== null && initialHomeGoals !== undefined &&
+    initialAwayGoals !== null && initialAwayGoals !== undefined
+      ? { home: initialHomeGoals, away: initialAwayGoals }
+      : null
+  );
+  const [liveMinute, setLiveMinute] = useState<string | null>(initialMinute ?? null);
+
+  const matchStatus = liveStatus;
+
+  useEffect(() => {
+    if (liveStatus !== "LIVE" && liveStatus !== "SCHEDULED") return;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/jogos/${matchId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status) setLiveStatus(data.status);
+        if (data.score) setLiveScore(data.score);
+        if (data.minute !== undefined) setLiveMinute(data.minute);
+      } catch { /* network errors are silent */ }
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => clearInterval(id);
+  }, [matchId, liveStatus]);
+
+  // Public predictions for Bolão tab
+  const [publicPredictions, setPublicPredictions] = useState<PublicPrediction[] | null>(null);
+  const [loadingBolao, setLoadingBolao] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== "bolao" || !locked) return;
+    if (publicPredictions !== null) return;
+    setLoadingBolao(true);
+    fetch(`/api/jogos/${matchId}/palpites`)
+      .then((r) => r.json())
+      .then((d) => setPublicPredictions(d.predictions ?? []))
+      .catch(() => setPublicPredictions([]))
+      .finally(() => setLoadingBolao(false));
+  }, [activeTab, locked, matchId, publicPredictions]);
 
   const hasChanged =
     homeGoals !== existingPrediction?.homeGoals ||
@@ -104,6 +165,41 @@ export default function MatchDetailClient({
 
   return (
     <div>
+      {/* Live score banner */}
+      {(liveStatus === "LIVE" || (liveStatus === "FINISHED" && liveScore)) && (
+        <div style={{
+          marginBottom: 12, padding: "10px 16px", borderRadius: 14,
+          background: liveStatus === "LIVE"
+            ? "linear-gradient(135deg, rgba(230,29,37,0.18), rgba(230,29,37,0.06))"
+            : "rgba(255,255,255,0.04)",
+          border: `1px solid ${liveStatus === "LIVE" ? "rgba(230,29,37,0.45)" : "rgba(255,255,255,0.1)"}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {liveStatus === "LIVE" && (
+              <span style={{
+                width: 8, height: 8, borderRadius: 99, background: "#E61D25",
+                boxShadow: "0 0 6px #E61D25",
+                animation: "pulse 1.5s infinite",
+                display: "inline-block",
+              }} />
+            )}
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1,
+              color: liveStatus === "LIVE" ? "#E61D25" : "rgba(231,238,250,0.5)",
+              textTransform: "uppercase" }}>
+              {liveStatus === "LIVE"
+                ? liveMinute ? `${liveMinute}'` : "AO VIVO"
+                : "ENCERRADO"}
+            </span>
+          </div>
+          {liveScore && (
+            <span className="font-display" style={{ fontSize: 22, color: "#f3f6fb", letterSpacing: 1 }}>
+              {liveScore.home} – {liveScore.away}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Tab bar */}
       <div style={{ display: "flex", gap: 16, borderBottom: "1px solid rgba(255,255,255,0.07)", marginBottom: 16 }}>
         {TABS.map((tab) => (
@@ -155,8 +251,147 @@ export default function MatchDetailClient({
       )}
 
       {activeTab === "bolao" && (
-        <PlaceholderTab icon="🏆" title="Palpites do Bolão" desc="Visível após o bloqueio dos palpites." />
+        locked
+          ? <BolaoTab
+              predictions={publicPredictions}
+              loading={loadingBolao}
+              homeTeamCode={homeTeamCode}
+              awayTeamCode={awayTeamCode}
+              matchStatus={matchStatus}
+              liveScore={liveScore}
+            />
+          : <PlaceholderTab
+              icon="🔒"
+              title="Palpites do Bolão"
+              desc={`Disponível a partir das ${formatTime(new Date(new Date(kickoff).getTime() - 10 * 60 * 1000))} BRT — após o lock.`}
+            />
       )}
+    </div>
+  );
+}
+
+// ─── Bolão Tab ────────────────────────────────────────────────────────────────
+
+function BolaoTab({
+  predictions, loading, homeTeamCode, awayTeamCode, matchStatus, liveScore,
+}: {
+  predictions: PublicPrediction[] | null;
+  loading: boolean;
+  homeTeamCode: string;
+  awayTeamCode: string;
+  matchStatus: string;
+  liveScore: { home: number; away: number } | null;
+}) {
+  if (loading || predictions === null) {
+    return (
+      <div style={{ padding: "32px 16px", textAlign: "center", color: "rgba(231,238,250,0.38)", fontSize: 13 }}>
+        Carregando palpites…
+      </div>
+    );
+  }
+
+  if (predictions.length === 0) {
+    return <PlaceholderTab icon="🏆" title="Sem palpites" desc="Nenhum participante registrou palpite para este jogo." />;
+  }
+
+  // Group by score for distribution view
+  const groups = new Map<string, PublicPrediction[]>();
+  for (const p of predictions) {
+    const key = `${p.homeGoals}:${p.awayGoals}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const isFinished = matchStatus === "FINISHED";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Summary */}
+      <div style={{
+        padding: "10px 14px", borderRadius: 12,
+        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      }}>
+        <span style={{ fontSize: 11, color: "rgba(231,238,250,0.62)" }}>
+          <strong style={{ color: "#f3f6fb" }}>{predictions.length}</strong> palpites registrados
+        </span>
+        <span style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", fontWeight: 600, letterSpacing: 0.5 }}>
+          {homeTeamCode} × {awayTeamCode}
+        </span>
+      </div>
+
+      {/* Score groups */}
+      {sorted.map(([key, preds]) => {
+        const [h, a] = key.split(":").map(Number);
+        const isCorrect = isFinished && liveScore && h === liveScore.home && a === liveScore.away;
+        const pct = Math.round((preds.length / predictions.length) * 100);
+
+        return (
+          <div key={key} style={{
+            borderRadius: 14, overflow: "hidden",
+            border: `1px solid ${isCorrect ? "rgba(60,172,59,0.5)" : "rgba(255,255,255,0.07)"}`,
+            background: isCorrect ? "rgba(60,172,59,0.08)" : "#0f1d33",
+          }}>
+            {/* Score header */}
+            <div style={{
+              padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              background: isCorrect ? "rgba(60,172,59,0.12)" : "rgba(255,255,255,0.03)",
+            }}>
+              <span className="font-display" style={{ fontSize: 20, color: isCorrect ? "#3CAC3B" : "#f3f6fb", letterSpacing: 0.5 }}>
+                {h} – {a}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isCorrect && (
+                  <span style={{ fontSize: 9, fontWeight: 800, color: "#3CAC3B", letterSpacing: 0.8 }}>✓ CORRETO</span>
+                )}
+                <span style={{ fontSize: 11, color: "rgba(231,238,250,0.5)" }}>
+                  {preds.length} · {pct}%
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 2, background: "rgba(255,255,255,0.04)" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: isCorrect ? "#3CAC3B" : "#2A398D", transition: "width 0.5s" }} />
+            </div>
+
+            {/* Participants */}
+            <div style={{ padding: "6px 0" }}>
+              {preds.map((p) => (
+                <div key={p.userId} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "6px 14px",
+                  background: p.isCurrentUser ? "rgba(60,172,59,0.08)" : "transparent",
+                }}>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: 99,
+                    background: p.isCurrentUser ? "rgba(60,172,59,0.4)" : "rgba(255,255,255,0.08)",
+                    border: `1px solid ${p.isCurrentUser ? "rgba(60,172,59,0.5)" : "rgba(255,255,255,0.1)"}`,
+                    overflow: "hidden", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 700, color: "#f3f6fb",
+                  }}>
+                    {p.avatarUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={p.avatarUrl} alt={p.userName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : p.userName.charAt(0).toUpperCase()}
+                  </div>
+                  <span style={{ flex: 1, fontSize: 12, color: p.isCurrentUser ? "#3CAC3B" : "#f3f6fb", fontWeight: p.isCurrentUser ? 700 : 500 }}>
+                    {p.userName} {p.isCurrentUser && "(você)"}
+                  </span>
+                  {isFinished && p.totalPoints !== null && (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: p.totalPoints > 0 ? "#C9A84C" : "rgba(231,238,250,0.38)", fontFamily: "monospace" }}>
+                      {p.totalPoints > 0 ? `+${p.totalPoints}` : "0"} pts
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

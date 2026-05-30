@@ -231,6 +231,10 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         existingPrediction={prediction ? { homeGoals: prediction.homeGoals, awayGoals: prediction.awayGoals } : null}
         locked={locked}
         matchStatus={match.status}
+        kickoff={match.kickoff.toISOString()}
+        liveHomeGoals={match.homeGoals}
+        liveAwayGoals={match.awayGoals}
+        liveMinute={match.minute}
         totalPoints={prediction?.totalPoints ?? null}
         homeProb={homeProb}
         drawProb={drawProb}

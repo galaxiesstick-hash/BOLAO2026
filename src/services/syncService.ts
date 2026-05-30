@@ -10,6 +10,11 @@ import {
   mapStatus,
   mapTeam,
 } from "./footballApi";
+import {
+  fetchFixtureById,
+  mapApiFootballStatus,
+  parseApiFootballId,
+} from "@/lib/apiFootball";
 
 const FLAG = (code: string) => (code ? `https://flagcdn.com/w80/${code}.png` : "");
 
@@ -159,6 +164,69 @@ export async function syncMatchResults(): Promise<SyncResult> {
     if (wasLive && newStatus === "FINISHED") {
       finishedMatchIds.push(match.id);
     }
+  }
+
+  return { updated, finishedMatchIds };
+}
+
+/**
+ * Syncs match results for fixtures tracked via api-football (externalId = "af:<id>").
+ * Covers friendlies and competitions not on football-data.org.
+ */
+export async function syncMatchResultsFromApiFootball(): Promise<SyncResult> {
+  const now = new Date();
+  const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+  const relevantMatches = await db.match.findMany({
+    where: {
+      externalId: { startsWith: "af:" },
+      status: { in: ["LIVE", "SCHEDULED"] },
+      kickoff: { gte: threeHoursAgo, lte: twoHoursAhead },
+    },
+  });
+
+  if (relevantMatches.length === 0) return { updated: 0, finishedMatchIds: [] };
+
+  let updated = 0;
+  const finishedMatchIds: string[] = [];
+
+  for (const match of relevantMatches) {
+    if (!match.externalId) continue;
+    const fixtureId = parseApiFootballId(match.externalId);
+    if (!fixtureId) continue;
+
+    let fixture;
+    try {
+      fixture = await fetchFixtureById(fixtureId);
+    } catch {
+      continue;
+    }
+    if (!fixture) continue;
+
+    const newStatus = mapApiFootballStatus(fixture.fixture.status.short);
+    const newHomeGoals = fixture.goals.home ?? fixture.score.fulltime.home ?? null;
+    const newAwayGoals = fixture.goals.away ?? fixture.score.fulltime.away ?? null;
+    const newMinute = fixture.fixture.status.elapsed
+      ? String(fixture.fixture.status.elapsed)
+      : null;
+
+    const changed =
+      match.status !== newStatus ||
+      match.homeGoals !== newHomeGoals ||
+      match.awayGoals !== newAwayGoals;
+
+    if (!changed) continue;
+
+    const wasLive = match.status === "LIVE";
+
+    await db.match.update({
+      where: { id: match.id },
+      data: { status: newStatus, homeGoals: newHomeGoals, awayGoals: newAwayGoals, minute: newMinute },
+    });
+
+    updated++;
+    if (wasLive && newStatus === "FINISHED") finishedMatchIds.push(match.id);
   }
 
   return { updated, finishedMatchIds };
