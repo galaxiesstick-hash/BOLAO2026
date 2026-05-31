@@ -90,9 +90,10 @@ export async function sendPaymentApprovedEmail(params: {
                       <tr>
                         <td style="padding:16px 20px;">
                           <div style="font-size:10px;color:#C9A84C;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;">O QUE ESTÁ EM JOGO</div>
-                          <div style="font-size:13px;color:rgba(231,238,250,0.8);line-height:1.7;">
-                            🏆 <strong style="color:#C9A84C;">Troféu Lamparão de Copa</strong> + Todo o pote acumulado<br/>
-                            🍺 1 pote de chuvisco para o campeão
+                          <div style="font-size:13px;color:rgba(231,238,250,0.8);line-height:1.8;">
+                            🥇 <strong style="color:#C9A84C;">1º lugar:</strong> Todo o pote menos os R$31 do vice — quem craVar mais, leva mais<br/>
+                            🥈 <strong style="color:#dcdcef;">2º lugar:</strong> R$ 31,00 — o vice-lamparão não sai de mãos abanando<br/>
+                            🥉 <strong style="color:#b08855;">3º lugar:</strong> 1 pote de chuvisco 🍺 — o menos pior merece alguma coisa
                           </div>
                         </td>
                       </tr>

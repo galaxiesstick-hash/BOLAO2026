@@ -155,36 +155,58 @@ function RankRow({ entry, isMe, displayRank }: { entry: RankingEntry; isMe: bool
 // ─── Prize pool banner ────────────────────────────────────────────────────────
 
 function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approvedCount: number }) {
-  const formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(prizePool);
+  const fmt = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  const first = Math.max(0, prizePool - 31);
+
   return (
-    <div
-      style={{
-        display: "flex", alignItems: "center", gap: 14,
-        padding: "12px 16px", borderRadius: 18,
-        background: "linear-gradient(135deg, rgba(201,168,76,0.2) 0%, rgba(201,168,76,0.06) 100%)",
-        border: "1px solid rgba(201,168,76,0.45)",
-      }}
-    >
-      <div style={{ fontSize: 30, lineHeight: 1 }}>🏆</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(201,168,76,0.75)", letterSpacing: 1.2, textTransform: "uppercase" }}>
-          Pote do Bolão
-        </div>
-        <div className="font-display" style={{ fontSize: 28, color: "#C9A84C", lineHeight: 1.1, letterSpacing: 0.4 }}>
-          {formatted}
+    <div style={{
+      borderRadius: 18, overflow: "hidden",
+      background: "linear-gradient(135deg, rgba(201,168,76,0.18) 0%, rgba(201,168,76,0.05) 100%)",
+      border: "1px solid rgba(201,168,76,0.45)",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "10px 16px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 22 }}>🏆</span>
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(201,168,76,0.75)", letterSpacing: 1.2, textTransform: "uppercase" }}>
+              Pote do Bolão
+            </div>
+            <div className="font-display" style={{ fontSize: 24, color: "#C9A84C", lineHeight: 1, letterSpacing: 0.4 }}>
+              {fmt(prizePool)}
+            </div>
+          </div>
         </div>
         {approvedCount > 0 && (
-          <div style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", marginTop: 2 }}>
-            {approvedCount} participante{approvedCount !== 1 ? "s" : ""} inscrito{approvedCount !== 1 ? "s" : ""}
+          <div style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", textAlign: "right" }}>
+            {approvedCount} lamparão{approvedCount !== 1 ? "ões" : ""}<br />
+            <span style={{ fontSize: 9 }}>na disputa</span>
           </div>
         )}
       </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: 9, color: "rgba(231,238,250,0.38)", letterSpacing: 0.5, textTransform: "uppercase" }}>Prêmio</div>
-        <div className="font-display" style={{ fontSize: 20, color: "#C9A84C", letterSpacing: 0.4 }}>
-          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(prizePool * 0.6)}
-        </div>
-        <div style={{ fontSize: 8.5, color: "rgba(231,238,250,0.28)" }}>60% ao 1º</div>
+
+      {/* Prize rows */}
+      <div style={{ borderTop: "1px solid rgba(201,168,76,0.2)" }}>
+        {[
+          { pos: "1º", icon: "🥇", label: "Quem craVar mais", value: first > 0 ? fmt(first) : "Restante do pote", color: "#C9A84C", bold: true },
+          { pos: "2º", icon: "🥈", label: "O vice-lamparão",  value: "R$ 31,00",                                   color: "#dcdcef", bold: false },
+          { pos: "3º", icon: "🥉", label: "O menos pior",     value: "1 pote de chuvisco 🍺",                     color: "#b08855", bold: false },
+        ].map((p, i, arr) => (
+          <div key={p.pos} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 16px",
+            borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+          }}>
+            <span style={{ fontSize: 16, width: 22, textAlign: "center" }}>{p.icon}</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 800, color: p.color, letterSpacing: 0.5 }}>{p.pos}</span>
+              <span style={{ fontSize: 10.5, color: "rgba(231,238,250,0.5)", marginLeft: 6 }}>{p.label}</span>
+            </div>
+            <span className={p.bold ? "font-display" : ""} style={{ fontSize: p.bold ? 14 : 12, color: p.color, fontWeight: p.bold ? 700 : 600, letterSpacing: p.bold ? 0.3 : 0 }}>
+              {p.value}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

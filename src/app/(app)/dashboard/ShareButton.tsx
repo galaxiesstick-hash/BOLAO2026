@@ -6,12 +6,16 @@ const SITE_URL = "https://bolao.bubhug.com";
 
 const INVITE_TEXT = `🏆 BOLÃO LAMPARÃO — Copa do Mundo 2026
 
-Faça seus palpites para todos os jogos da Copa e dispute o prêmio com a galera!
+Faça seus palpites e mostre quem manda nos cravados!
 
 ✅ Palpites em todos os 64 jogos da Copa 2026
-🎯 Pontuação inteligente — placares improváveis valem mais pontos
+🎯 Placares improváveis valem mais — zebra tem recompensa
 🔒 Palpites fecham 10 min antes de cada jogo
-🏆 Ranking ao vivo durante toda a Copa
+
+💰 PREMIAÇÃO:
+🥇 1º lugar: Todo o pote (menos os R$31 do vice)
+🥈 2º lugar: R$ 31,00
+🥉 3º lugar: 1 pote de chuvisco 🍺
 
 👉 Acesse e se inscreva agora:
 ${SITE_URL}`;

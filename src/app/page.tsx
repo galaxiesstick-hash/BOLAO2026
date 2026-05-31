@@ -348,20 +348,58 @@ export default async function LandingPage() {
               <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 22, color: T.text, letterSpacing: 0.5, marginTop: 6 }}>
                 QUEM CRAVA, LEVA.
               </div>
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* 1st */}
                 <div style={{
-                  padding: "16px 14px", borderRadius: 12, textAlign: "center",
-                  background: "rgba(10,22,40,0.6)",
-                  border: `1px solid ${T.gold}88`,
-                  boxShadow: `0 0 32px -8px ${T.gold}55`,
+                  padding: "14px 16px", borderRadius: 12,
+                  background: "rgba(10,22,40,0.7)",
+                  border: `1px solid ${T.gold}99`,
+                  boxShadow: `0 0 28px -8px ${T.gold}55`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
                 }}>
-                  <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 13, color: T.gold, letterSpacing: 1.2 }}>1º LUGAR</div>
-                  <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 28, color: T.text, marginTop: 4, letterSpacing: 0.4 }}>TODO O POTE</div>
-                  <div style={{ fontSize: 11, color: T.muted, marginTop: 4, lineHeight: 1.5 }}>
-                    Todo o valor arrecadado +{" "}
-                    <span style={{ color: T.gold, fontWeight: 700 }}>1 pote de chuvisco</span> 🍫
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 22 }}>🥇</span>
+                    <div>
+                      <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 11, color: T.gold, letterSpacing: 1.2 }}>1º LUGAR</div>
+                      <div style={{ fontSize: 10, color: T.muted }}>Quem craVar mais</div>
+                    </div>
                   </div>
-                  <div style={{ marginTop: 10, fontSize: 9.5, color: T.faint, fontWeight: 700, letterSpacing: 0.8 }}>LAMPARÃO DE COPA</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: T.text, letterSpacing: 0.4 }}>TODO O POTE</div>
+                    <div style={{ fontSize: 9, color: T.muted }}>menos os R$31 do vice</div>
+                  </div>
+                </div>
+                {/* 2nd */}
+                <div style={{
+                  padding: "12px 16px", borderRadius: 12,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(220,220,235,0.2)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>🥈</span>
+                    <div>
+                      <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 11, color: "#dcdcef", letterSpacing: 1.2 }}>2º LUGAR</div>
+                      <div style={{ fontSize: 10, color: T.muted }}>O vice-lamparão</div>
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: "#dcdcef", letterSpacing: 0.4 }}>R$ 31,00</div>
+                </div>
+                {/* 3rd */}
+                <div style={{
+                  padding: "12px 16px", borderRadius: 12,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(176,136,85,0.25)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>🥉</span>
+                    <div>
+                      <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 11, color: "#b08855", letterSpacing: 1.2 }}>3º LUGAR</div>
+                      <div style={{ fontSize: 10, color: T.muted }}>O menos pior</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#b08855", fontWeight: 700 }}>1 pote de chuvisco 🍺</div>
                 </div>
               </div>
               <div style={{ marginTop: 12, fontSize: 10.5, color: T.muted, lineHeight: 1.4 }}>
