@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { MatchPhase, MatchStatus } from "@prisma/client";
 import { getFlagUrl, isMatchLocked } from "@/lib/utils";
@@ -229,10 +230,23 @@ function MatchCard({ match, expanded, onExpand, onSaved }: {
 
           {/* Right: points OR action button */}
           {isFinished && pred ? (
-            <div style={{ fontSize: 13, fontWeight: 800, color: (pred.totalPoints ?? 0) > 0 ? "#3CAC3B" : "rgba(231,238,250,0.38)", fontFamily: "var(--font-mono, monospace)" }}>
-              {(pred.totalPoints ?? 0) > 0 ? `+${pred.totalPoints} pts` : "0 pts"}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: (pred.totalPoints ?? 0) > 0 ? "#3CAC3B" : "rgba(231,238,250,0.38)", fontFamily: "var(--font-mono, monospace)" }}>
+                {(pred.totalPoints ?? 0) > 0 ? `+${pred.totalPoints} pts` : "0 pts"}
+              </div>
+              <Link href={`/jogos/${match.id}#bolao`} style={{ textDecoration: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 9, background: "rgba(42,57,141,0.18)", border: "1px solid rgba(42,57,141,0.4)", fontSize: 10.5, fontWeight: 700, color: "#8a9bff", whiteSpace: "nowrap" }}>
+                  👥 Ver palpites
+                </div>
+              </Link>
             </div>
-          ) : !locked ? (
+          ) : locked ? (
+            <Link href={`/jogos/${match.id}#bolao`} style={{ textDecoration: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", borderRadius: 10, background: "rgba(42,57,141,0.18)", border: "1px solid rgba(42,57,141,0.4)", fontSize: 11, fontWeight: 700, color: "#8a9bff" }}>
+                👥 Bolão
+              </div>
+            </Link>
+          ) : (
             <button
               onClick={handleExpand}
               style={{
@@ -243,15 +257,9 @@ function MatchCard({ match, expanded, onExpand, onSaved }: {
                 fontSize: 11.5, fontWeight: 700, letterSpacing: 0.3,
               }}
             >
-              {expanded ? (
-                <>✕ Fechar</>
-              ) : pred ? (
-                <>✎ Editar</>
-              ) : (
-                <>⚽ Palpitar</>
-              )}
+              {expanded ? <>✕ Fechar</> : pred ? <>✎ Editar</> : <>⚽ Palpitar</>}
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 

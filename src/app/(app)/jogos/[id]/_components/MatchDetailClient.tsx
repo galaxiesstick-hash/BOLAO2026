@@ -63,10 +63,30 @@ export default function MatchDetailClient({
   drawProb,
   awayProb,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("palpite");
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#bolao") return "bolao";
+    return "palpite";
+  });
   const [homeGoals, setHomeGoals] = useState<number | null>(existingPrediction?.homeGoals ?? null);
   const [awayGoals, setAwayGoals] = useState<number | null>(existingPrediction?.awayGoals ?? null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  // Client-side lock state — rechecked every 30s so the Bolão tab appears
+  // automatically at lock time without requiring a page reload.
+  const computeLocked = () => {
+    const lockAt = new Date(kickoff).getTime() - 10 * 60 * 1000;
+    return locked || Date.now() >= lockAt;
+  };
+  const [isLocked, setIsLocked] = useState(computeLocked);
+  useEffect(() => {
+    if (isLocked) return; // already locked — no need to keep polling
+    const id = setInterval(() => {
+      const nowLocked = computeLocked();
+      if (nowLocked) setIsLocked(true);
+    }, 10_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocked, kickoff]);
 
   // Live score state — polled every 30s when LIVE
   const [liveStatus, setLiveStatus] = useState(initialStatus);
@@ -102,7 +122,7 @@ export default function MatchDetailClient({
   const [loadingBolao, setLoadingBolao] = useState(false);
 
   useEffect(() => {
-    if (activeTab !== "bolao" || !locked) return;
+    if (activeTab !== "bolao" || !isLocked) return;
     if (publicPredictions !== null) return;
     setLoadingBolao(true);
     fetch(`/api/jogos/${matchId}/palpites`)
@@ -110,13 +130,13 @@ export default function MatchDetailClient({
       .then((d) => setPublicPredictions(d.predictions ?? []))
       .catch(() => setPublicPredictions([]))
       .finally(() => setLoadingBolao(false));
-  }, [activeTab, locked, matchId, publicPredictions]);
+  }, [activeTab, isLocked, matchId, publicPredictions]);
 
   const hasChanged =
     homeGoals !== existingPrediction?.homeGoals ||
     awayGoals !== existingPrediction?.awayGoals;
 
-  const canSave = homeGoals !== null && awayGoals !== null && !locked && hasChanged;
+  const canSave = homeGoals !== null && awayGoals !== null && !isLocked && hasChanged;
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
@@ -232,7 +252,7 @@ export default function MatchDetailClient({
           homeGoals={homeGoals} awayGoals={awayGoals}
           setHomeGoals={setHomeGoals} setAwayGoals={setAwayGoals}
           existingPrediction={existingPrediction}
-          locked={locked} matchStatus={matchStatus}
+          locked={isLocked} matchStatus={matchStatus}
           totalPoints={totalPoints} resultLabel={resultLabel}
           accuracyType={accuracyType}
           canSave={canSave} isSaved={isSaved} saveState={saveState}
@@ -251,7 +271,7 @@ export default function MatchDetailClient({
       )}
 
       {activeTab === "bolao" && (
-        locked
+        isLocked
           ? <BolaoTab
               predictions={publicPredictions}
               loading={loadingBolao}
