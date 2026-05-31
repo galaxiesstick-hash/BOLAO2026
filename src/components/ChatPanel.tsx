@@ -79,8 +79,8 @@ export default function ChatPanel({
       channel.subscribe((msg) => {
         const data = msg.data as ChatMsg & { type?: string; id?: string; hidden?: boolean; userId?: string; until?: string | null };
 
-        if (data.type === "hide") {
-          setMessages((prev) => prev.map((m) => m.id === data.id ? { ...m, hidden: data.hidden! } : m));
+        if (data.type === "delete") {
+          setMessages((prev) => prev.filter((m) => m.id !== data.id));
           return;
         }
         if (data.type === "ban" && data.userId === currentUserId) {
@@ -143,8 +143,9 @@ export default function ChatPanel({
     }
   }, [input, sending]);
 
-  const handleHide = useCallback(async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     await fetch(`/api/chat/${id}`, { method: "DELETE" });
+    setMessages((prev) => prev.filter((m) => m.id !== id));
     setAdminAction(null);
   }, []);
 
@@ -163,7 +164,7 @@ export default function ChatPanel({
     setAdminAction(null);
   }, []);
 
-  const visibleMessages = isAdmin ? messages : messages.filter((m) => !m.hidden);
+  const visibleMessages = messages;
 
   return (
     <>
@@ -254,7 +255,7 @@ export default function ChatPanel({
                     display: "flex", gap: 8,
                     flexDirection: isOwn ? "row-reverse" : "row",
                     alignItems: "flex-end",
-                    opacity: msg.hidden ? 0.4 : 1,
+                    opacity: 1,
                   }}>
                     {!isOwn && <Avatar msg={msg} />}
                     <div style={{ maxWidth: "75%", display: "flex", flexDirection: "column", alignItems: isOwn ? "flex-end" : "flex-start" }}>
@@ -266,9 +267,6 @@ export default function ChatPanel({
                           >
                             <span style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8" }}>{msg.userName}</span>
                           </button>
-                          {isAdmin && msg.hidden && (
-                            <span style={{ fontSize: 9, color: "#E61D25", fontWeight: 600 }}>oculto</span>
-                          )}
                         </div>
                       )}
                       <div style={{
@@ -282,18 +280,18 @@ export default function ChatPanel({
                         </span>
                         {isAdmin && (
                           <button
-                            onClick={() => handleHide(msg.id)}
+                            onClick={() => handleDelete(msg.id)}
                             style={{
                               position: "absolute", top: -8, right: -8,
                               width: 18, height: 18, borderRadius: 99,
-                              background: msg.hidden ? "rgba(60,172,59,0.8)" : "rgba(230,29,37,0.8)",
+                              background: "rgba(230,29,37,0.8)",
                               border: "none", cursor: "pointer",
                               display: "flex", alignItems: "center", justifyContent: "center",
                               fontSize: 9, color: "#fff",
                             }}
-                            title={msg.hidden ? "Mostrar" : "Ocultar"}
+                            title="Excluir mensagem"
                           >
-                            {msg.hidden ? "👁" : "🗑"}
+                            🗑
                           </button>
                         )}
                       </div>

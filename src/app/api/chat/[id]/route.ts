@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { publishChatMessage } from "@/lib/ably";
 
-// DELETE — admin hide/unhide message
+// DELETE — admin permanently deletes a message
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,17 +14,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const msg = await db.chatMessage.findUnique({ where: { id } });
-  if (!msg) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const updated = await db.chatMessage.update({
-    where: { id },
-    data: { hidden: !msg.hidden },
-  });
+  const deleted = await db.chatMessage.deleteMany({ where: { id } });
+  if (deleted.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
-    await publishChatMessage({ type: "hide", id, hidden: updated.hidden });
+    await publishChatMessage({ type: "delete", id });
   } catch { /* non-fatal */ }
 
-  return NextResponse.json({ id, hidden: updated.hidden });
+  return NextResponse.json({ deleted: true });
 }
