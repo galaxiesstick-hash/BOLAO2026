@@ -63,42 +63,36 @@ export async function POST(req: NextRequest) {
     const endToEndId = pix.endToEndId;
     const txid = pix.txid;
 
-    if (!endToEndId && !txid) continue;
-
     try {
-      let payment = null;
-
-      // 1. Try to find by txid (dynamic charge — most precise match)
-      if (txid) {
-        payment = await db.payment.findFirst({
-          where: { efiTxId: txid, status: "PENDING" },
-          include: { user: { select: { id: true, email: true } } },
-        });
+      // Identity is the charge txid only. A PIX without a txid is a static/manual
+      // transfer that cannot be safely attributed to a user → manual approval.
+      if (!txid) {
+        console.warn(
+          `[webhook/efi] PIX sem txid ignorado (estático) — endToEndId=${endToEndId} valor=${pix.valor}. Requer aprovação manual.`
+        );
+        continue;
       }
 
-      // 2. Try to find by endToEndId (already stored by CRON polling)
-      if (!payment && endToEndId) {
-        payment = await db.payment.findFirst({
-          where: { efiTxId: endToEndId, status: "PENDING" },
-          include: { user: { select: { id: true, email: true } } },
-        });
-      }
-
-      // 3. Fallback: oldest pending PARTICIPANT payment (static PIX — no txid stored)
-      if (!payment) {
-        payment = await db.payment.findFirst({
-          where: {
-            status: "PENDING",
-            efiTxId: null,
-            user: { role: "PARTICIPANT" },
-          },
-          include: { user: { select: { id: true, email: true } } },
-          orderBy: { createdAt: "asc" },
-        });
-      }
+      // Match strictly by the charge txid we stored when this user's QR was generated.
+      const payment = await db.payment.findFirst({
+        where: { efiTxId: txid, status: "PENDING", user: { role: "PARTICIPANT" } },
+        include: { user: { select: { id: true, email: true, name: true } } },
+      });
 
       if (!payment) {
-        console.warn(`[webhook/efi] No pending payment for endToEndId=${endToEndId} txid=${txid}`);
+        console.warn(
+          `[webhook/efi] txid=${txid} não corresponde a nenhuma cobrança PENDENTE — endToEndId=${endToEndId}. Requer aprovação manual.`
+        );
+        continue;
+      }
+
+      // Amount safety: never approve below the charged value.
+      const paid = pix.valor ? parseFloat(pix.valor) : 0;
+      const expected = payment.amount ? Number(payment.amount) : 0;
+      if (expected > 0 && paid > 0 && paid + 0.001 < expected) {
+        console.warn(
+          `[webhook/efi] Valor pago (R$${paid}) abaixo do esperado (R$${expected}) para txid=${txid}. Requer aprovação manual.`
+        );
         continue;
       }
 
@@ -109,7 +103,7 @@ export async function POST(req: NextRequest) {
           approvedBy: "efi_webhook",
           approvedAt: pix.horario ? new Date(pix.horario) : new Date(),
           amount: pix.valor ? parseFloat(pix.valor) : undefined,
-          efiTxId: endToEndId ?? txid ?? payment.efiTxId,
+          pixTxId: endToEndId ?? null, // settlement id; keep efiTxId = charge txid
         },
       });
 
@@ -123,11 +117,10 @@ export async function POST(req: NextRequest) {
       });
 
       // Send welcome email (non-blocking)
-      const userName = await db.user.findUnique({ where: { id: payment.user.id }, select: { name: true } });
-      sendPaymentApprovedEmail({ to: payment.user.email, name: userName?.name ?? "Participante" })
+      sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name ?? "Participante" })
         .catch(err => console.error("[webhook/efi] Email error:", err));
 
-      console.log(`[webhook/efi] Approved payment for ${payment.user.email} (endToEndId=${endToEndId} txid=${txid})`);
+      console.log(`[webhook/efi] Approved ${payment.user.email} via txid=${txid} (e2e=${endToEndId})`);
     } catch (err) {
       console.error(`[webhook/efi] Error processing PIX:`, err);
     }

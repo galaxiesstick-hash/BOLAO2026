@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { registerSchema } from "@/lib/validations";
+import { sendNewRegistrationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -41,6 +42,10 @@ export async function POST(req: Request) {
 
   // Create score record
   await db.userScore.create({ data: { userId: user.id } });
+
+  // Notify admin of new registration (non-blocking — never fail signup on email error)
+  sendNewRegistrationEmail({ name: user.name, email: user.email, phone: user.phone })
+    .catch((err) => console.error("[register] Admin notification email error:", err));
 
   return NextResponse.json({ id: user.id, name: user.name, email: user.email }, { status: 201 });
 }

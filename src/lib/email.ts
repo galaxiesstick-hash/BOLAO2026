@@ -143,6 +143,113 @@ export async function sendPaymentApprovedEmail(params: {
   });
 }
 
+/**
+ * Notify the pool admin whenever a new participant registers.
+ * Sends to ADMIN_NOTIFICATION_EMAIL (fallback: vippsilva.smart@gmail.com).
+ */
+export async function sendNewRegistrationEmail(params: {
+  name: string;
+  email: string;
+  phone?: string | null;
+}) {
+  const { name, email, phone } = params;
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? "vippsilva.smart@gmail.com";
+  const when = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Novo cadastro — Bolão Copa 2026</title>
+</head>
+<body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#060f1f;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+
+          <!-- Logo / Header -->
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#C9A84C;width:4px;border-radius:2px;">&nbsp;</td>
+                  <td style="padding-left:10px;">
+                    <div style="font-size:22px;font-weight:900;color:#f3f6fb;letter-spacing:2px;text-transform:uppercase;">BOLÃO</div>
+                    <div style="font-size:11px;color:#C9A84C;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Copa do Mundo 2026</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#0f1d33;border-radius:20px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(42,57,141,0.18);border-bottom:1px solid rgba(42,57,141,0.35);padding:24px 32px;text-align:center;">
+                    <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#4d62c9;text-transform:uppercase;margin-bottom:8px;">🆕 NOVO CADASTRO</div>
+                    <div style="font-size:20px;font-weight:900;color:#f3f6fb;letter-spacing:0.5px;">${name}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:24px 32px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13.5px;color:rgba(231,238,250,0.8);line-height:1.9;">
+                      <tr><td style="color:#C9A84C;font-weight:700;width:80px;">Nome</td><td>${name}</td></tr>
+                      <tr><td style="color:#C9A84C;font-weight:700;">Email</td><td>${email}</td></tr>
+                      <tr><td style="color:#C9A84C;font-weight:700;">Telefone</td><td>${phone ?? "—"}</td></tr>
+                      <tr><td style="color:#C9A84C;font-weight:700;">Quando</td><td>${when}</td></tr>
+                    </table>
+
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 6px;">
+                      <tr><td style="border-top:1px solid rgba(255,255,255,0.07);height:1px;">&nbsp;</td></tr>
+                    </table>
+                    <p style="margin:14px 0 0;font-size:12px;color:rgba(231,238,250,0.5);line-height:1.6;">
+                      O pagamento entra como <strong style="color:#f3f6fb;">PENDENTE</strong>. Aprove manualmente no painel de participantes
+                      ou aguarde a confirmação automática do PIX.
+                    </p>
+
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+                      <tr>
+                        <td align="center">
+                          <a href="https://bolao.bubhug.com/admin/pagamentos"
+                             style="display:inline-block;padding:13px 34px;background:#2A398D;color:#ffffff;font-size:13px;font-weight:800;text-decoration:none;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;">
+                            ABRIR PAINEL
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding-top:24px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:rgba(231,238,250,0.28);">
+                Bolão Copa do Mundo 2026 · notificação de administrador
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? "Bolão Copa 2026 <contatobubhug@gmail.com>",
+    to: adminEmail,
+    subject: `🆕 Novo cadastro: ${name} — Bolão Copa 2026`,
+    html,
+  });
+}
+
 export async function sendKickoffReminderEmail(params: {
   to: string;
   name: string;

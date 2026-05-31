@@ -46,30 +46,28 @@ export async function POST(req: NextRequest) {
     const endToEndId = pix.endToEndId;
     const txid = pix.txid;
 
-    if (!endToEndId && !txid) continue;
-
     try {
-      // Look up payment by txid (stored when charge was created) or endToEndId
-      let payment = txid
-        ? await db.payment.findFirst({
-            where: { efiTxId: txid, status: "PENDING" },
-            include: { user: { select: { id: true, email: true } } },
-          })
-        : null;
-
-      if (!payment && endToEndId) {
-        payment = await db.payment.findFirst({
-          where: {
-            status: "PENDING",
-            user: { role: "PARTICIPANT" },
-          },
-          include: { user: { select: { id: true, email: true } } },
-          orderBy: { createdAt: "asc" },
-        });
+      // Identity is the charge txid only — never approve oldest-pending (FIFO),
+      // since any PIX to the key would wrongly approve an unrelated user.
+      if (!txid) {
+        console.warn(`[webhook/efi/pix] PIX sem txid ignorado (estático) — endToEndId=${endToEndId}. Requer aprovação manual.`);
+        continue;
       }
 
+      const payment = await db.payment.findFirst({
+        where: { efiTxId: txid, status: "PENDING", user: { role: "PARTICIPANT" } },
+        include: { user: { select: { id: true, email: true, name: true } } },
+      });
+
       if (!payment) {
-        console.warn(`[webhook/efi/pix] No pending payment found for txid=${txid} endToEndId=${endToEndId}`);
+        console.warn(`[webhook/efi/pix] txid=${txid} não corresponde a cobrança PENDENTE — endToEndId=${endToEndId}. Requer aprovação manual.`);
+        continue;
+      }
+
+      const paid = pix.valor ? parseFloat(pix.valor) : 0;
+      const expected = payment.amount ? Number(payment.amount) : 0;
+      if (expected > 0 && paid > 0 && paid + 0.001 < expected) {
+        console.warn(`[webhook/efi/pix] Valor pago (R$${paid}) abaixo do esperado (R$${expected}) para txid=${txid}. Requer aprovação manual.`);
         continue;
       }
 
@@ -80,7 +78,7 @@ export async function POST(req: NextRequest) {
           approvedBy: "efi_webhook",
           approvedAt: pix.horario ? new Date(pix.horario) : new Date(),
           amount: pix.valor ? parseFloat(pix.valor) : undefined,
-          efiTxId: endToEndId ?? txid ?? payment.efiTxId,
+          pixTxId: endToEndId ?? null, // settlement id; keep efiTxId = charge txid
         },
       });
 
@@ -93,7 +91,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      console.log(`[webhook/efi/pix] Auto-approved payment for ${payment.user.email} (endToEndId: ${endToEndId})`);
+      console.log(`[webhook/efi/pix] Approved ${payment.user.email} via txid=${txid} (e2e=${endToEndId})`);
     } catch (err) {
       console.error(`[webhook/efi/pix] Error processing pix:`, err);
     }
