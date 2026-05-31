@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { getFlagUrl, getInitials } from "@/lib/utils";
+import ShareButton from "./ShareButton";
 import { LampMark } from "@/components/ui/LampMark";
 import CountdownTimer from "./CountdownTimer";
 
@@ -443,6 +444,9 @@ export default async function DashboardPage() {
           </button>
         </Link>
       </div>
+
+      {/* Share / invite */}
+      <ShareButton />
     </div>
   );
 }
