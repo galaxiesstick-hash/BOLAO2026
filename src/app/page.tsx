@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { LampMark, LampLogo } from "@/components/ui/LampMark";
+import ShareButton from "@/components/ShareButton";
 import { db } from "@/lib/db";
 
 // ─── Design tokens ────────────────────────────────────────────
@@ -434,6 +435,9 @@ export default async function LandingPage() {
                 BORA, LAMPARÃO →
               </div>
             </Link>
+            <div style={{ marginTop: 10 }}>
+              <ShareButton />
+            </div>
           </div>
         </div>
 
