@@ -35,7 +35,8 @@ export const poolConfigSchema = z.object({
 export const matchResultSchema = z.object({
   homeGoals: z.number().int().min(0),
   awayGoals: z.number().int().min(0),
-  status: z.enum(["FINISHED", "CANCELLED", "POSTPONED"]),
+  status: z.enum(["LIVE", "FINISHED", "SCHEDULED", "CANCELLED", "POSTPONED"]),
+  minute: z.string().optional(),
 });
 
 export const oddsOverrideSchema = z.object({

@@ -252,8 +252,9 @@ export interface PointsResult {
 export async function triggerPointsCalculation(matchIds: string[]): Promise<PointsResult> {
   if (matchIds.length === 0) return { calculated: 0 };
 
+  // Process both FINISHED (final) and LIVE (provisional) matches
   const matches = await db.match.findMany({
-    where: { id: { in: matchIds }, status: "FINISHED" },
+    where: { id: { in: matchIds }, status: { in: ["LIVE", "FINISHED"] } },
   });
 
   let calculated = 0;

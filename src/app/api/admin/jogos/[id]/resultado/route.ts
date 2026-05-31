@@ -25,7 +25,7 @@ export async function POST(
     return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { homeGoals, awayGoals, status } = parsed.data;
+  const { homeGoals, awayGoals, status, minute } = parsed.data;
 
   const match = await db.match.findUnique({ where: { id } });
   if (!match) {
@@ -34,10 +34,16 @@ export async function POST(
 
   const updated = await db.match.update({
     where: { id },
-    data: { homeGoals, awayGoals, status },
+    data: {
+      homeGoals,
+      awayGoals,
+      status,
+      minute: status === "LIVE" ? (minute ?? null) : null,
+    },
   });
 
-  if (status === "FINISHED") {
+  // Calculate points for both LIVE (provisional) and FINISHED (final)
+  if (status === "LIVE" || status === "FINISHED") {
     await triggerPointsCalculation([id]);
   }
 
@@ -46,5 +52,6 @@ export async function POST(
     homeGoals: updated.homeGoals,
     awayGoals: updated.awayGoals,
     status: updated.status,
+    minute: updated.minute,
   });
 }
