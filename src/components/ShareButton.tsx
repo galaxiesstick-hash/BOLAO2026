@@ -8,7 +8,7 @@ const INVITE_TEXT = `🏆 BOLÃO LAMPARÃO — Copa do Mundo 2026
 
 Faça seus palpites e mostre quem manda nos cravados!
 
-✅ Palpites em todos os 64 jogos da Copa 2026
+✅ Palpites em todos os 104 jogos da Copa 2026
 🎯 Placares improváveis valem mais — zebra tem recompensa
 🔒 Palpites fecham 10 min antes de cada jogo
 
