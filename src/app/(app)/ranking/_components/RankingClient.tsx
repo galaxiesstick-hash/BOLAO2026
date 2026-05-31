@@ -11,6 +11,8 @@ export type RankingEntry = {
   userName: string;
   avatarUrl: string | null;
   totalPoints: number;
+  matchPoints: number;
+  questionPoints: number;
   overallRank: number | null;
   divisionRank: number | null;
   division: string | null;
@@ -140,13 +142,31 @@ function RankRow({ entry, isMe, displayRank }: { entry: RankingEntry; isMe: bool
         #{displayRank}
       </div>
       <AvatarCircle entry={entry} size={32} color={isMe ? "#3CAC3B" : "#1c2f4d"} />
-      <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#f3f6fb", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {entry.userName}
-        {isMe && <span style={{ fontSize: 10, color: "#3CAC3B", fontWeight: 400, marginLeft: 4 }}>(você)</span>}
+      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#f3f6fb", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {entry.userName}
+          {isMe && <span style={{ fontSize: 10, color: "#3CAC3B", fontWeight: 400, marginLeft: 4 }}>(você)</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+          <span style={{ fontSize: 10, color: "rgba(231,238,250,0.45)" }}>
+            ⚽ <span style={{ color: "rgba(231,238,250,0.7)", fontWeight: 600 }}>{entry.matchPoints}</span>
+          </span>
+          {entry.questionPoints > 0 && (
+            <>
+              <span style={{ fontSize: 9, color: "rgba(231,238,250,0.25)" }}>·</span>
+              <span style={{ fontSize: 10, color: "rgba(231,238,250,0.45)" }}>
+                ❓ <span style={{ color: "rgba(231,238,250,0.7)", fontWeight: 600 }}>{entry.questionPoints}</span>
+              </span>
+            </>
+          )}
+        </div>
       </div>
       {entry.rankChange != null && <ChangeBadge change={entry.rankChange} />}
-      <div className="font-display" style={{ fontSize: 17, color: "#f3f6fb", minWidth: 48, textAlign: "right", letterSpacing: 0.3 }}>
-        {entry.totalPoints}
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div className="font-display" style={{ fontSize: 17, color: "#f3f6fb", letterSpacing: 0.3 }}>
+          {entry.totalPoints}
+        </div>
+        <div style={{ fontSize: 9, color: "rgba(231,238,250,0.35)", fontWeight: 600, letterSpacing: 0.3 }}>pts</div>
       </div>
     </div>
   );
@@ -323,6 +343,15 @@ export default function RankingClient({ entries, currentUserId, divisions, total
             </div>
             <div className="font-mono font-bold" style={{ fontSize: 13, color: "#C9A84C", marginTop: 4 }}>
               {currentUserEntry.totalPoints} pts
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5, marginTop: 3 }}>
+              <span style={{ fontSize: 10, color: "rgba(231,238,250,0.45)" }}>⚽ {currentUserEntry.matchPoints}</span>
+              {currentUserEntry.questionPoints > 0 && (
+                <>
+                  <span style={{ fontSize: 9, color: "rgba(231,238,250,0.25)" }}>·</span>
+                  <span style={{ fontSize: 10, color: "rgba(231,238,250,0.45)" }}>❓ {currentUserEntry.questionPoints}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
