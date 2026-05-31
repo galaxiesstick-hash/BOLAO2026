@@ -35,23 +35,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { answers: true },
   });
 
-  // Auto-score all answers when correctAnswer is set/changed
-  if (parsed.data.correctAnswer !== undefined && parsed.data.correctAnswer !== null) {
-    const correctAnswer = parsed.data.correctAnswer;
+  // Auto-score all answers when correctAnswer is set or cleared
+  if (parsed.data.correctAnswer !== undefined) {
+    const correctAnswer = parsed.data.correctAnswer; // may be null (clear)
 
-    // Update each answer: mark correct/incorrect and award points
+    // Update each answer: mark correct/incorrect and award points (or zero when cleared)
     for (const answer of question.answers) {
-      const isCorrect = answer.answer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+      const isCorrect =
+        correctAnswer !== null &&
+        answer.answer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
       await db.answer.update({
         where: { id: answer.id },
         data: {
-          correct: isCorrect,
+          correct: correctAnswer === null ? null : isCorrect,
           points: isCorrect ? question.pointsValue : 0,
         },
       });
     }
 
-    // Collect affected userIds
+    // Collect affected userIds (recalculate regardless of set or clear)
     const affectedUserIds = [...new Set(question.answers.map((a) => a.userId))];
 
     // Recompute UserScore for each affected user
