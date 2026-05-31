@@ -13,6 +13,7 @@ export default async function RankingPage() {
   // Fetch all UserScore records with user data, ordered by points desc
   const [scores, prizePoolAgg] = await Promise.all([
     db.userScore.findMany({
+      where: { user: { role: "PARTICIPANT" } },
       orderBy: { totalPoints: "desc" },
       include: {
         user: {
