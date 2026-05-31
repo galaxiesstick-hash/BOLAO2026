@@ -74,6 +74,8 @@ model User {
   score         UserScore?
   achievements  UserAchievement[]
   notifications Notification[]
+  chatMessages  ChatMessage[]
+  chatBan       ChatBan?
   accounts      Account[]
   sessions      Session[]
 
@@ -303,6 +305,32 @@ model UserAchievement {
   @@unique([userId, type])
   @@index([userId])
   @@map("user_achievements")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  message   String   @db.VarChar(500)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt(sort: Desc)])
+  @@map("chat_messages")
+}
+
+model ChatBan {
+  id        String    @id @default(cuid())
+  userId    String    @unique @map("user_id")
+  bannedBy  String    @map("banned_by")
+  reason    String?
+  until     DateTime?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_bans")
 }
 
 model SyncLog {

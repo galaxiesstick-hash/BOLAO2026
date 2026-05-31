@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Navbar from "@/components/layout/Navbar";
 import BottomNav from "@/components/layout/BottomNav";
+import ChatPanel from "@/components/ChatPanel";
 
 export default async function AppLayout({
   children,
@@ -36,6 +37,7 @@ export default async function AppLayout({
         {children}
       </main>
       <BottomNav />
+      <ChatPanel currentUserId={session.user.id} isAdmin={isAdmin} />
     </div>
   );
 }
