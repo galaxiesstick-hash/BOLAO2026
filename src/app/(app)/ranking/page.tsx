@@ -13,7 +13,12 @@ export default async function RankingPage() {
   // Fetch all UserScore records with user data, ordered by points desc
   const [scores, prizePoolAgg] = await Promise.all([
     db.userScore.findMany({
-      where: { user: { role: "PARTICIPANT" } },
+      where: {
+        user: {
+          role: "PARTICIPANT",
+          payment: { status: "APPROVED" },
+        },
+      },
       orderBy: { totalPoints: "desc" },
       include: {
         user: {
@@ -36,7 +41,7 @@ export default async function RankingPage() {
   const prizePool = prizePoolAgg._sum.amount ? Number(prizePoolAgg._sum.amount) : 0;
   const approvedCount = prizePoolAgg._count.id;
 
-  const totalParticipants = scores.length;
+  const totalParticipants = approvedCount;
   const divisions = calculateDivisions(totalParticipants);
 
   // Build ranking entries — compute overall rank from position in sorted list
