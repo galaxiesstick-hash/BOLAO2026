@@ -13,10 +13,11 @@ export async function GET(req: NextRequest) {
 
   const scores = await db.userScore.findMany({
     where: {
-      user: { role: "PARTICIPANT" },
-      ...(search
-        ? { user: { role: "PARTICIPANT", name: { contains: search, mode: "insensitive" } } }
-        : {}),
+      user: {
+        role: "PARTICIPANT",
+        payment: { status: "APPROVED" },
+        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      },
     },
     orderBy: { totalPoints: "desc" },
     include: {

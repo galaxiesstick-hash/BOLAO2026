@@ -94,7 +94,9 @@ export default function ChatPanel({
           return;
         }
         if (!data.type) {
-          setMessages((prev) => [...prev, data as ChatMsg]);
+          setMessages((prev) =>
+            prev.some((m) => m.id === data.id) ? prev : [...prev, data as ChatMsg]
+          );
           if (!open) setUnread((n) => n + 1);
         }
       });
@@ -128,7 +130,13 @@ export default function ChatPanel({
       });
       const data = await res.json();
       if (data.banned) { setBanned(data.error); return; }
-      if (res.ok) setInput("");
+      if (res.ok) {
+        setInput("");
+        // Add own message immediately — Ably subscriber deduplicates by id
+        setMessages((prev) =>
+          prev.some((m) => m.id === data.id) ? prev : [...prev, data as ChatMsg]
+        );
+      }
     } finally {
       setSending(false);
       inputRef.current?.focus();
