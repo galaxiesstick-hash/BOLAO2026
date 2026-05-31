@@ -237,8 +237,7 @@ export default function CadastroPage() {
             </div>
           </div>
           <div style={{ marginTop: 10, fontSize: 12.5, color: T.muted, lineHeight: 1.45 }}>
-            Em 30 segundos você tá dentro do bolão da Copa 2026. Junta-se aos{" "}
-            <span style={{ color: T.gold, fontWeight: 700 }}>142 lampareiros</span> já inscritos.
+            Em 30 segundos você tá dentro do bolão da Copa 2026.
           </div>
         </div>
 

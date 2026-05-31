@@ -126,15 +126,6 @@ export default async function ComoFuncionaPage() {
         ))}
       </div>
 
-      {/* Bônus extras */}
-      <SectionHeader label="Bônus extras" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <BonusCard color="#E61D25" icon="⚡" label="Goleada" desc="3+ gols de diferença" pts="+2" />
-        <BonusCard color="#C9A84C" icon="🎯" label="Confiança" desc="Multiplica até 1.4×" pts="×1.4" />
-        <BonusCard color="#4d62c9" icon="🔥" label="Sequência" desc="3 acertos seguidos" pts="+5" />
-        <BonusCard color="#3CAC3B" icon="⚽" label="Goleiro" desc="Cravou 0-0 ou empate" pts="+3" />
-      </div>
-
       {/* Regras importantes */}
       <SectionHeader label="Regras importantes" />
       <div
@@ -216,23 +207,3 @@ function ScoringCard({ color, icon, label, pts, desc, example }: {
   );
 }
 
-function BonusCard({ color, icon, label, desc, pts }: {
-  color: string; icon: string; label: string; desc: string; pts: string;
-}) {
-  return (
-    <div
-      style={{
-        padding: 12, borderRadius: 14,
-        background: "#0f1d33", border: `1px solid ${color}44`,
-        position: "relative",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 22, lineHeight: 1 }}>{icon}</span>
-        <span className="font-display" style={{ fontSize: 14, color, letterSpacing: 0.4 }}>{pts}</span>
-      </div>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: "#f3f6fb", marginTop: 8 }}>{label}</div>
-      <div style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", marginTop: 2, lineHeight: 1.35 }}>{desc}</div>
-    </div>
-  );
-}

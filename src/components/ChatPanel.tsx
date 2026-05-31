@@ -179,7 +179,7 @@ export default function ChatPanel({
             border: "2px solid rgba(60,172,59,0.4)",
             boxShadow: "0 4px 20px rgba(60,172,59,0.5)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
+            cursor: "pointer", overflow: "visible",
           }}
           aria-label="Abrir chat"
         >
@@ -188,13 +188,16 @@ export default function ChatPanel({
           </svg>
           {unread > 0 && (
             <div style={{
-              position: "absolute", top: -4, right: -4,
-              width: 18, height: 18, borderRadius: 99,
-              background: "#E61D25", border: "2px solid #0a1628",
+              position: "absolute", top: -6, right: -6,
+              minWidth: 20, height: 20, borderRadius: 99,
+              background: "#E61D25",
+              border: "2.5px solid #0a1628",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 9, fontWeight: 800, color: "#fff",
+              fontSize: 11, fontWeight: 800, color: "#fff",
+              padding: "0 5px", lineHeight: 1,
+              boxShadow: "0 2px 6px rgba(230,29,37,0.6)",
             }}>
-              {unread > 9 ? "9+" : unread}
+              {unread > 99 ? "99+" : unread}
             </div>
           )}
         </button>
