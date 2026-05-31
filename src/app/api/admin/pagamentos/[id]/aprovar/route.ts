@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
+import { createApprovalNotifications } from "@/lib/notifications";
 
 export async function POST(
   _req: Request,
@@ -31,24 +32,11 @@ export async function POST(
     );
   }
 
-  await db.$transaction([
-    db.payment.update({
-      where: { id },
-      data: {
-        status: "APPROVED",
-        approvedBy: session.user.id,
-        approvedAt: new Date(),
-      },
-    }),
-    db.notification.create({
-      data: {
-        userId: payment.user.id,
-        title: "Pagamento aprovado!",
-        message: "Sua inscrição foi confirmada. Bom bolão!",
-        type: "payment_approved",
-      },
-    }),
-  ]);
+  await db.payment.update({
+    where: { id },
+    data: { status: "APPROVED", approvedBy: session.user.id, approvedAt: new Date() },
+  });
+  await createApprovalNotifications(payment.user.id);
 
   // Send welcome email to participant (non-blocking)
   sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name })

@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
+import { createApprovalNotifications } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -107,14 +108,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      await db.notification.create({
-        data: {
-          userId: payment.user.id,
-          title: "Pagamento confirmado!",
-          message: `PIX de R$ ${pix.valor ?? "?"} recebido. Sua inscrição está confirmada. Bom bolão!`,
-          type: "payment_approved",
-        },
-      });
+      await createApprovalNotifications(payment.user.id);
 
       // Send welcome email to participant + admin notification (non-blocking)
       sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name ?? "Participante" })
