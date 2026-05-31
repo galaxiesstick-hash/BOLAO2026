@@ -48,5 +48,5 @@ export default auth(async (req: NextRequest & { auth: { user?: { id: string; rol
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|.*\\.png$).*)"],
 };
