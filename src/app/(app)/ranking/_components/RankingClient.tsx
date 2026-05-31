@@ -154,10 +154,7 @@ function RankRow({ entry, isMe, displayRank }: { entry: RankingEntry; isMe: bool
 
 // ─── Prize pool banner ────────────────────────────────────────────────────────
 
-function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approvedCount: number }) {
-  const fmt = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-  const first = Math.max(0, prizePool - 31);
-
+function PrizeBanner({ approvedCount }: { prizePool: number; approvedCount: number }) {
   return (
     <div style={{
       borderRadius: 18, overflow: "hidden",
@@ -172,8 +169,8 @@ function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approved
             <div style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(201,168,76,0.75)", letterSpacing: 1.2, textTransform: "uppercase" }}>
               Pote do Bolão
             </div>
-            <div className="font-display" style={{ fontSize: 24, color: "#C9A84C", lineHeight: 1, letterSpacing: 0.4 }}>
-              {fmt(prizePool)}
+            <div style={{ fontSize: 11, color: "rgba(231,238,250,0.4)", marginTop: 2, fontStyle: "italic" }}>
+              Valor a revelar em breve 👀
             </div>
           </div>
         </div>
@@ -188,9 +185,9 @@ function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approved
       {/* Prize rows */}
       <div style={{ borderTop: "1px solid rgba(201,168,76,0.2)" }}>
         {[
-          { pos: "1º", icon: "🥇", label: "Quem craVar mais", value: first > 0 ? fmt(first) : "Restante do pote", color: "#C9A84C", bold: true },
-          { pos: "2º", icon: "🥈", label: "O vice-lamparão",  value: "R$ 31,00",                                   color: "#dcdcef", bold: false },
-          { pos: "3º", icon: "🥉", label: "O menos pior",     value: "1 pote de chuvisco 🍺",                     color: "#b08855", bold: false },
+          { pos: "1º", icon: "🥇", label: "Quem craVar mais", value: "???",                    color: "#C9A84C", bold: true  },
+          { pos: "2º", icon: "🥈", label: "O vice-lamparão",  value: "R$ 31,00",              color: "#dcdcef", bold: false },
+          { pos: "3º", icon: "🥉", label: "O menos pior",     value: "1 pote de chuvisco 🍺", color: "#b08855", bold: false },
         ].map((p, i, arr) => (
           <div key={p.pos} style={{
             display: "flex", alignItems: "center", gap: 10,
