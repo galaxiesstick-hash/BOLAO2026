@@ -27,7 +27,7 @@ export default async function RankingPage() {
       },
     }),
     db.payment.aggregate({
-      where: { status: "APPROVED" },
+      where: { status: "APPROVED", user: { role: "PARTICIPANT" } },
       _sum: { amount: true },
       _count: { id: true },
     }),
