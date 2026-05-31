@@ -197,7 +197,8 @@ export default function PixQrCode() {
             style={{ display: "block", borderRadius: 8 }}
           />
         ) : (
-          <EfiQrSvg payload={data.pixPayload ?? data.pixKey ?? ""} />
+          // No native image (efi without QR scope, or static): render from the EMV payload.
+          <EfiQrSvg payload={data.mode === "efi" ? (data.qrCode ?? "") : (data.pixPayload ?? data.pixKey ?? "")} />
         )}
       </div>
 

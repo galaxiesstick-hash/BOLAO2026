@@ -70,7 +70,11 @@ export async function createPixCharge(params: {
   const { amount, debtorName, description = "Inscrição Bolão Copa 2026", expiresIn = 3600 } = params;
   const efi = buildClient();
 
-  // 1) Create charge — devedor is omitted (cpf/cnpj required if included)
+  // 1) Create charge — devedor is omitted (cpf/cnpj required if included).
+  // The immediate-charge response already includes `pixCopiaECola` (EMV string),
+  // so we don't depend on pixGenerateQRCode (which requires an extra API scope
+  // this application may not have — that scope failure used to silently push the
+  // whole flow to static PIX, losing the txid needed for safe auto-approval).
   const cob = await efi.pixCreateImmediateCharge({}, {
     calendario: { expiracao: expiresIn },
     valor: { original: amount.toFixed(2) },
@@ -78,8 +82,22 @@ export async function createPixCharge(params: {
     solicitacaoPagador: description,
   });
 
-  // 2) Get QR code image + copy-paste string
-  const qr = await efi.pixGenerateQRCode({ id: cob.loc.id });
+  const emv: string = cob.pixCopiaECola ?? "";
+
+  // 2) Best-effort native QR image. If the scope is missing, the client renders
+  // the QR from the EMV string instead — the charge (and its txid) still stands.
+  let qrImage = "";
+  try {
+    const qr = await efi.pixGenerateQRCode({ id: cob.loc.id });
+    qrImage = qr.imagemQrcode ?? "";
+  } catch (err) {
+    console.warn("[efi] pixGenerateQRCode unavailable (scope) — using client-side QR from EMV:", err instanceof Error ? err.message : err);
+  }
+
+  // If we somehow have neither the EMV nor a native image, the charge is unusable.
+  if (!emv && !qrImage) {
+    throw new Error("Efí charge created but no QR/EMV returned");
+  }
 
   const criacao = new Date(cob.calendario.criacao);
   const expiresAt = new Date(criacao.getTime() + cob.calendario.expiracao * 1000);
@@ -87,8 +105,8 @@ export async function createPixCharge(params: {
   return {
     txid: cob.txid,
     locId: cob.loc.id,
-    qrCode: qr.qrcode,
-    qrImage: qr.imagemQrcode,
+    qrCode: emv,
+    qrImage,
     expiresAt: expiresAt.toISOString(),
   };
 }
