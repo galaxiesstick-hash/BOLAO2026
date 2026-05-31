@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { listReceivedPix, efiConfigured } from "@/lib/efi";
-import { sendPaymentApprovedEmail } from "@/lib/email";
+import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -94,9 +94,13 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Send welcome email (non-blocking)
+      // Send welcome email to participant + admin notification (non-blocking)
       sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name })
         .catch(err => console.error("[sync-payments] Email error:", err));
+      sendAdminPaymentApprovedEmail({
+        name: payment.user.name, email: payment.user.email,
+        amount: paid, approvedBy: "efi_polling",
+      }).catch(err => console.error("[sync-payments] Admin email error:", err));
 
       console.log(`[sync-payments] Approved ${payment.user.email} via txid=${pix.txid} (e2e=${pix.endToEndId})`);
       approved++;

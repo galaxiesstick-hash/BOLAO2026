@@ -56,12 +56,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async createUser({ user }) {
       if (!user.id) return;
       // Re-read role from DB — admin accounts must never get participant records
-      const dbUser = await db.user.findUnique({ where: { id: user.id as string }, select: { role: true } });
+      const dbUser = await db.user.findUnique({ where: { id: user.id as string }, select: { role: true, phone: true } });
       if (dbUser?.role === "ADMIN") return;
       await Promise.all([
         db.payment.create({ data: { userId: user.id } }),
         db.userScore.create({ data: { userId: user.id } }),
       ]);
+      // Notify admin (Google OAuth path — email/password path notifies in /api/auth/register).
+      // Dynamic import avoids bundling nodemailer into the Edge-runtime middleware chunk.
+      import("@/lib/email").then(({ sendNewRegistrationEmail }) =>
+        sendNewRegistrationEmail({
+          name: user.name ?? "Sem nome",
+          email: user.email ?? "",
+          phone: dbUser?.phone ?? null,
+        })
+      ).catch((err) => console.error("[auth/createUser] Admin notification email error:", err));
     },
   },
   callbacks: {

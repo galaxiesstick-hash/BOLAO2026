@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -90,6 +91,11 @@ export async function POST(req: NextRequest) {
           type: "payment_approved",
         },
       });
+
+      sendAdminPaymentApprovedEmail({
+        name: payment.user.name ?? "Participante", email: payment.user.email,
+        amount: pix.valor ? parseFloat(pix.valor) : null, approvedBy: "efi_webhook",
+      }).catch(err => console.error("[webhook/efi/pix] Admin email error:", err));
 
       console.log(`[webhook/efi/pix] Approved ${payment.user.email} via txid=${txid} (e2e=${endToEndId})`);
     } catch (err) {

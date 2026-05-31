@@ -23,7 +23,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { sendPaymentApprovedEmail } from "@/lib/email";
+import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -116,9 +116,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Send welcome email (non-blocking)
+      // Send welcome email to participant + admin notification (non-blocking)
       sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name ?? "Participante" })
         .catch(err => console.error("[webhook/efi] Email error:", err));
+      sendAdminPaymentApprovedEmail({
+        name: payment.user.name ?? "Participante", email: payment.user.email,
+        amount: pix.valor ? parseFloat(pix.valor) : null, approvedBy: "efi_webhook",
+      }).catch(err => console.error("[webhook/efi] Admin email error:", err));
 
       console.log(`[webhook/efi] Approved ${payment.user.email} via txid=${txid} (e2e=${endToEndId})`);
     } catch (err) {

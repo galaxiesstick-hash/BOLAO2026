@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { sendPaymentApprovedEmail } from "@/lib/email";
+import { sendPaymentApprovedEmail, sendAdminPaymentApprovedEmail } from "@/lib/email";
 
 export async function POST(
   _req: Request,
@@ -50,9 +50,16 @@ export async function POST(
     }),
   ]);
 
-  // Send welcome email (non-blocking)
+  // Send welcome email to participant (non-blocking)
   sendPaymentApprovedEmail({ to: payment.user.email, name: payment.user.name })
     .catch(err => console.error("[admin/aprovar] Email error:", err));
+
+  // Notify admin
+  sendAdminPaymentApprovedEmail({
+    name: payment.user.name, email: payment.user.email,
+    amount: payment.amount ? Number(payment.amount) : null,
+    approvedBy: "admin",
+  }).catch(err => console.error("[admin/aprovar] Admin email error:", err));
 
   return NextResponse.json({ success: true });
 }
