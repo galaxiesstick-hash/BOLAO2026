@@ -96,9 +96,6 @@ export default async function ComoFuncionaPage() {
           background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)",
         }}
       >
-        <div style={{ fontSize: 11, color: "rgba(231,238,250,0.55)", marginBottom: 4, lineHeight: 1.5 }}>
-          Fórmula: <span style={{ color: "#C9A84C", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}>arred(((100 − prob) ÷ 100) × 15)</span>
-        </div>
         <div style={{ fontSize: 11, color: "#E61D25", marginBottom: 12 }}>
           ⚡ Prob &lt; 10% → <strong>20 pts fixos</strong> (Zebra Histórica)
         </div>
