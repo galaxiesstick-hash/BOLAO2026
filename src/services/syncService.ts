@@ -519,13 +519,25 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
 }
 
 /**
- * Re-numbers overallRank for all PARTICIPANT users by totalPoints desc.
- * Call this whenever points change outside of normal match scoring.
+ * Re-numbers overallRank for all PARTICIPANT users.
+ *
+ * Tiebreaker order:
+ *   1. totalPoints desc
+ *   2. exactScores desc (more exact predictions wins)
+ *   3. correctWinners desc (more correct results wins)
+ *   4. matchesBet desc (more active participant wins)
+ *   5. user.createdAt asc (earlier registration wins — last resort)
  */
 export async function recalculateRanking(): Promise<void> {
   const allScores = await db.userScore.findMany({
     where: { user: { role: "PARTICIPANT" } },
-    orderBy: { totalPoints: "desc" },
+    orderBy: [
+      { totalPoints:    "desc" },
+      { exactScores:    "desc" },
+      { correctWinners: "desc" },
+      { matchesBet:     "desc" },
+      { user: { createdAt: "asc" } },
+    ],
     select: { id: true },
   });
 

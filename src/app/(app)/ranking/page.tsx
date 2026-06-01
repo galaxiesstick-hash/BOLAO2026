@@ -19,7 +19,13 @@ export default async function RankingPage() {
           payment: { status: "APPROVED" },
         },
       },
-      orderBy: { totalPoints: "desc" },
+      orderBy: [
+        { totalPoints:    "desc" },
+        { exactScores:    "desc" },
+        { correctWinners: "desc" },
+        { matchesBet:     "desc" },
+        { user: { createdAt: "asc" } },
+      ],
       include: {
         user: {
           select: {
@@ -65,7 +71,7 @@ export default async function RankingPage() {
       totalPoints: score.totalPoints,
       matchPoints,
       questionPoints,
-      overallRank: score.overallRank ?? idx + 1,
+      overallRank: idx + 1, // always use sorted position — never the stale DB value
       divisionRank: score.divisionRank,
       division: score.division,
       exactScores: score.exactScores,
