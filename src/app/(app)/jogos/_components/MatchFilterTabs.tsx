@@ -5,6 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { MatchPhase, MatchStatus } from "@prisma/client";
 import { getFlagUrl, isMatchLocked } from "@/lib/utils";
+import { calculateMatchPoints, ZEBRA_HISTORICA_THRESHOLD } from "@/lib/scoring";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -274,6 +275,46 @@ function MatchCard({ match, expanded, onExpand, onSaved }: {
             {/* Away stepper */}
             <Stepper value={away} onChange={setAway} label={match.awayTeam.name} flag={match.awayTeam.flag} reverse />
           </div>
+
+          {/* Points mini-table */}
+          {match.odds && (() => {
+            const pts = calculateMatchPoints(match.odds.homeWin, match.odds.draw, match.odds.awayWin);
+            const selected: "home" | "draw" | "away" | null =
+              home > away ? "home" : home < away ? "away" : "draw";
+            const rows = [
+              { key: "home" as const, label: `Vitória ${match.homeTeam.code}`, base: pts.homeWinPoints, prob: match.odds.homeWin, color: "#E61D25" },
+              { key: "draw" as const, label: "Empate",                          base: pts.drawPoints,    prob: match.odds.draw,    color: "#C9A84C" },
+              { key: "away" as const, label: `Vitória ${match.awayTeam.code}`, base: pts.awayWinPoints, prob: match.odds.awayWin, color: "#4d62c9" },
+            ];
+            return (
+              <div style={{ marginTop: 14, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 44px 44px 54px", padding: "5px 10px", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {["Resultado", "Base", "Bônus", "Máx"].map((h) => (
+                    <span key={h} style={{ fontSize: 8.5, fontWeight: 800, color: "rgba(231,238,250,0.35)", letterSpacing: 0.6, textAlign: h !== "Resultado" ? "center" : "left" }}>{h.toUpperCase()}</span>
+                  ))}
+                </div>
+                {rows.map(({ key, label, base, prob, color }) => {
+                  const isSel = selected === key;
+                  const isZebra = prob < ZEBRA_HISTORICA_THRESHOLD;
+                  return (
+                    <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 44px 44px 54px", padding: "7px 10px", background: isSel ? `rgba(${color === "#E61D25" ? "230,29,37" : color === "#C9A84C" ? "201,168,76" : "77,98,201"},0.12)` : isZebra ? "rgba(230,29,37,0.06)" : "transparent", borderBottom: key !== "away" ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        {isSel && <div style={{ width: 4, height: 4, borderRadius: 99, background: color, boxShadow: `0 0 5px ${color}`, flexShrink: 0 }} />}
+                        <span style={{ fontSize: 11, color: isSel ? "#f3f6fb" : "rgba(231,238,250,0.6)", fontWeight: isSel ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+                        {isZebra && <span style={{ fontSize: 7.5, fontWeight: 800, color: "#E61D25", background: "rgba(230,29,37,0.15)", border: "1px solid rgba(230,29,37,0.3)", padding: "1px 4px", borderRadius: 3, letterSpacing: 0.3, flexShrink: 0 }}>⚡ ZEBRA</span>}
+                      </div>
+                      <span className="font-display" style={{ fontSize: 13, color: isZebra ? "#E61D25" : color, textAlign: "center", letterSpacing: 0.3 }}>{base}</span>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: 8, color: "#3CAC3B", fontWeight: 700 }}>+5</span>
+                        <span style={{ fontSize: 8, color: "rgba(231,238,250,0.38)" }}>+3/+1</span>
+                      </div>
+                      <span className="font-display" style={{ fontSize: 13, color: isSel ? "#3CAC3B" : isZebra ? "#E61D25" : "rgba(231,238,250,0.55)", textAlign: "center", letterSpacing: 0.3, fontWeight: 700 }}>{base + 5}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Save button */}
           <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
