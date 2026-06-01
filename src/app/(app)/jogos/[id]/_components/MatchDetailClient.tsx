@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { getFlagUrl, formatTime } from "@/lib/utils";
-import { calculateMatchPoints } from "@/lib/scoring";
+import { calculateMatchPoints, ZEBRA_HISTORICA_THRESHOLD, ZEBRA_HISTORICA_POINTS } from "@/lib/scoring";
 
 type Props = {
   matchId: string;
@@ -259,6 +259,9 @@ export default function MatchDetailClient({
           handleSave={handleSave}
           odds={odds}
           selectedOutcome={selectedOutcome}
+          homeProb={homeProb}
+          drawProb={drawProb}
+          awayProb={awayProb}
         />
       )}
 
@@ -436,16 +439,18 @@ function PlaceholderTab({ icon, title, desc }: { icon: string; title: string; de
 function PointsTable({
   homeCode, awayCode,
   homeWinPoints, drawPoints, awayWinPoints,
+  homeProb, drawProb, awayProb,
   selected,
 }: {
   homeCode: string; awayCode: string;
   homeWinPoints: number; drawPoints: number; awayWinPoints: number;
+  homeProb?: number | null; drawProb?: number | null; awayProb?: number | null;
   selected: "home" | "draw" | "away" | null;
 }) {
   const rows = [
-    { key: "home" as const, label: `Vitória ${homeCode}`, base: homeWinPoints, color: "#E61D25" },
-    { key: "draw" as const, label: "Empate",               base: drawPoints,    color: "#C9A84C" },
-    { key: "away" as const, label: `Vitória ${awayCode}`, base: awayWinPoints, color: "#4d62c9" },
+    { key: "home" as const, label: `Vitória ${homeCode}`, base: homeWinPoints, color: "#E61D25", prob: homeProb ?? 100 },
+    { key: "draw" as const, label: "Empate",               base: drawPoints,    color: "#C9A84C", prob: drawProb  ?? 100 },
+    { key: "away" as const, label: `Vitória ${awayCode}`, base: awayWinPoints, color: "#4d62c9", prob: awayProb  ?? 100 },
   ];
 
   return (
@@ -465,37 +470,38 @@ function PointsTable({
       </div>
 
       {/* Rows */}
-      {rows.map(({ key, label, base, color }) => {
+      {rows.map(({ key, label, base, color, prob }) => {
         const isSelected = selected === key;
-        const bonus = { EXACT: "+5", ALMOST_EXACT: "+3", WINNER_ONLY: "+1" };
-        const examples = [
-          { b: "+5", t: `${base + 5}` },
-          { b: "+3", t: `${base + 3}` },
-          { b: "+1", t: `${base + 1}` },
-        ];
-        void examples; void bonus;
+        const isZebra = prob < ZEBRA_HISTORICA_THRESHOLD;
         return (
           <div
             key={key}
             style={{
               display: "grid", gridTemplateColumns: "1fr 60px 60px 70px",
               padding: "9px 12px",
-              background: isSelected
+              background: isZebra
+                ? `rgba(230,29,37,0.07)`
+                : isSelected
                 ? `rgba(${color === "#E61D25" ? "230,29,37" : color === "#C9A84C" ? "201,168,76" : "77,98,201"},0.12)`
                 : "transparent",
               borderBottom: key !== "away" ? "1px solid rgba(255,255,255,0.05)" : "none",
               transition: "background 0.2s",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {isSelected && (
-                <div style={{ width: 5, height: 5, borderRadius: 99, background: color, boxShadow: `0 0 6px ${color}` }} />
+                <div style={{ width: 5, height: 5, borderRadius: 99, background: color, boxShadow: `0 0 6px ${color}`, flexShrink: 0 }} />
               )}
               <span style={{ fontSize: 12, color: isSelected ? "#f3f6fb" : "rgba(231,238,250,0.62)", fontWeight: isSelected ? 700 : 500 }}>
                 {label}
               </span>
+              {isZebra && (
+                <span style={{ fontSize: 8, fontWeight: 800, color: "#E61D25", background: "rgba(230,29,37,0.15)", border: "1px solid rgba(230,29,37,0.35)", padding: "1px 5px", borderRadius: 4, letterSpacing: 0.4 }}>
+                  ⚡ ZEBRA
+                </span>
+              )}
             </div>
-            <span style={{ fontSize: 13, fontWeight: 700, color, textAlign: "center", fontFamily: "var(--font-bebas, monospace)" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: isZebra ? "#E61D25" : color, textAlign: "center", fontFamily: "var(--font-bebas, monospace)" }}>
               {base}
             </span>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
@@ -503,7 +509,7 @@ function PointsTable({
               <span style={{ fontSize: 9, color: "rgba(231,238,250,0.45)" }}>+3 / +1</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-              <span style={{ fontSize: 12, color: "#3CAC3B", fontWeight: 800, fontFamily: "var(--font-bebas, monospace)" }}>
+              <span style={{ fontSize: 12, color: isZebra ? "#E61D25" : "#3CAC3B", fontWeight: 800, fontFamily: "var(--font-bebas, monospace)" }}>
                 {base + 5}
               </span>
               <span style={{ fontSize: 9, color: "rgba(231,238,250,0.38)" }}>
@@ -563,6 +569,7 @@ function PalpiteTab({
   totalPoints, resultLabel, accuracyType,
   canSave, isSaved, saveState, handleSave,
   odds, selectedOutcome,
+  homeProb, drawProb, awayProb,
 }: {
   homeTeamCode: string; homeTeamName: string; homeTeamFlag: string;
   awayTeamCode: string; awayTeamName: string; awayTeamFlag: string;
@@ -575,6 +582,7 @@ function PalpiteTab({
   canSave: boolean; isSaved: boolean; saveState: string; handleSave: () => void;
   odds: { homeWinPoints: number; drawPoints: number; awayWinPoints: number };
   selectedOutcome: "home" | "draw" | "away" | null;
+  homeProb?: number | null; drawProb?: number | null; awayProb?: number | null;
 }) {
   return (
     <div>
@@ -620,6 +628,9 @@ function PalpiteTab({
         homeWinPoints={odds.homeWinPoints}
         drawPoints={odds.drawPoints}
         awayWinPoints={odds.awayWinPoints}
+        homeProb={homeProb}
+        drawProb={drawProb}
+        awayProb={awayProb}
         selected={selectedOutcome}
       />
 

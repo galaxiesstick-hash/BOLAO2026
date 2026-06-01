@@ -3,10 +3,13 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { triggerPointsCalculation } from "@/services/syncService";
+
+const ODDS_CUTOFF_HOURS = 24;
 
 const schema = z.object({
   homeWinProb: z.number().min(0).max(100),
-  drawProb: z.number().min(0).max(100),
+  drawProb:    z.number().min(0).max(100),
   awayWinProb: z.number().min(0).max(100),
 });
 
@@ -18,30 +21,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Dados inválidos", details: parsed.error.flatten() }, { status: 422 });
   }
 
+  const match = await db.match.findUnique({
+    where: { id },
+    select: { kickoff: true, status: true },
+  });
+  if (!match) return NextResponse.json({ error: "Jogo não encontrado" }, { status: 404 });
+
+  // Odds are frozen 24h before kickoff (or if already started)
+  const cutoff = new Date(match.kickoff.getTime() - ODDS_CUTOFF_HOURS * 60 * 60 * 1000);
+  if (new Date() >= cutoff || match.status === "LIVE" || match.status === "FINISHED") {
+    return NextResponse.json(
+      { error: `Odds congeladas — só podem ser alteradas até ${ODDS_CUTOFF_HOURS}h antes da partida.` },
+      { status: 409 }
+    );
+  }
+
   const { homeWinProb, drawProb, awayWinProb } = parsed.data;
 
-  const match = await db.match.update({
+  const updated = await db.match.update({
     where: { id },
-    data: {
-      homeWinProb,
-      drawProb,
-      awayWinProb,
-      oddsSource: "admin",
-      oddsUpdatedAt: new Date(),
-    },
-    select: { id: true, homeWinProb: true, drawProb: true, awayWinProb: true },
+    data: { homeWinProb, drawProb, awayWinProb, oddsSource: "admin", oddsUpdatedAt: new Date() },
+    select: { id: true, homeWinProb: true, drawProb: true, awayWinProb: true, status: true },
   });
 
-  return NextResponse.json(match);
+  // If the match already has a result, recalculate all predictions with the new odds
+  if (updated.status === "FINISHED") {
+    await triggerPointsCalculation([id]);
+  }
+
+  return NextResponse.json(updated);
 }

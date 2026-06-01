@@ -32,14 +32,25 @@ export interface ScoringResult {
 }
 
 /**
- * Distributes 30 base points inversely proportional to probability.
- * Lower probability → more points (upsets rewarded more).
+ * Calculates base points per outcome independently from its probability.
  *
- * Example (33/33/33): → 10 / 10 / 10
- * Example (70/20/10): → ~3 / 9 / 18
+ * Formula: round(((100 - prob) / 100) × 15)
+ * Zebra Histórica: prob < 10% → fixed 20 pts regardless of formula.
+ *
+ * Examples:
+ *   60% → 6 pts  |  40% → 9 pts  |  20% → 12 pts
+ *   15% → 13 pts |  9%  → 20 pts (Zebra Histórica)
  *
  * Falls back to 10/10/10 when probabilities are missing or invalid.
  */
+export const ZEBRA_HISTORICA_THRESHOLD = 10; // prob < 10% triggers the rule
+export const ZEBRA_HISTORICA_POINTS    = 20;
+
+export function calcBasePoints(prob: number): number {
+  if (prob < ZEBRA_HISTORICA_THRESHOLD) return ZEBRA_HISTORICA_POINTS;
+  return Math.round(((100 - prob) / 100) * 15);
+}
+
 export function calculateMatchPoints(
   homeProb: number,
   drawProb: number,
@@ -48,21 +59,10 @@ export function calculateMatchPoints(
   if (!homeProb || !drawProb || !awayProb || homeProb <= 0 || drawProb <= 0 || awayProb <= 0) {
     return { homeWinPoints: 10, drawPoints: 10, awayWinPoints: 10 };
   }
-
-  const invH = 1 / homeProb;
-  const invD = 1 / drawProb;
-  const invA = 1 / awayProb;
-  const total = invH + invD + invA;
-
-  const home = Math.round(30 * invH / total);
-  const draw = Math.round(30 * invD / total);
-  const away = 30 - home - draw; // ensure exact sum = 30
-
-  // Clamp to [2, 26] so no outcome is worth 0 or basically all points
   return {
-    homeWinPoints: Math.max(2, Math.min(26, home)),
-    drawPoints: Math.max(2, Math.min(26, draw)),
-    awayWinPoints: Math.max(2, Math.min(26, away)),
+    homeWinPoints: calcBasePoints(homeProb),
+    drawPoints:    calcBasePoints(drawProb),
+    awayWinPoints: calcBasePoints(awayProb),
   };
 }
 
