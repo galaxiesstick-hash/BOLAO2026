@@ -8,7 +8,42 @@ import { recalculateRanking } from "@/services/syncService";
 const patchSchema = z.object({
   correctAnswer: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  // Editable fields
+  text: z.string().min(1).optional(),
+  pointsValue: z.number().int().min(1).max(20).optional(),
+  deadline: z.string().nullable().optional(),
+  options: z.array(z.string()).nullable().optional(),
 });
+
+/** Recalculates user_scores for a set of userIds from scratch. */
+async function recalculateUserScores(userIds: string[]): Promise<void> {
+  for (const userId of userIds) {
+    const predAgg = await db.prediction.aggregate({
+      where: { userId, totalPoints: { not: null } },
+      _sum: { totalPoints: true },
+      _count: { id: true },
+    });
+    const answerAgg = await db.answer.aggregate({
+      where: { userId, points: { not: null } },
+      _sum: { points: true },
+    });
+    const exactScores = await db.prediction.count({
+      where: { userId, breakdown: { path: ["accuracyType"], equals: "EXACT" } },
+    });
+    const correctWinners = await db.prediction.count({
+      where: { userId, totalPoints: { gt: 0 } },
+    });
+    const matchesBet = await db.prediction.count({ where: { userId } });
+    const totalPoints = (predAgg._sum.totalPoints ?? 0) + (answerAgg._sum.points ?? 0);
+
+    await db.userScore.upsert({
+      where: { userId },
+      create: { userId, totalPoints, exactScores, correctWinners, matchesBet },
+      update: { totalPoints, exactScores, correctWinners, matchesBet },
+    });
+  }
+  await recalculateRanking();
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,71 +64,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Dados inválidos" }, { status: 422 });
   }
 
+  const { correctAnswer, active, text, pointsValue, deadline, options } = parsed.data;
+
   const question = await db.question.update({
     where: { id },
-    data: parsed.data,
+    data: {
+      ...(active !== undefined && { active }),
+      ...(text !== undefined && { text }),
+      ...(pointsValue !== undefined && { pointsValue }),
+      ...(deadline !== undefined && { deadline: deadline ? new Date(deadline) : null }),
+      ...(options !== undefined && { options: options ?? undefined }),
+      ...(correctAnswer !== undefined && { correctAnswer }),
+    },
     include: { answers: true },
   });
 
-  // Auto-score all answers when correctAnswer is set or cleared
-  if (parsed.data.correctAnswer !== undefined) {
-    const correctAnswer = parsed.data.correctAnswer; // may be null (clear)
+  // Re-score answers when correctAnswer changes, or when pointsValue changes
+  // (a points change affects how much each correct answer is worth)
+  const shouldRescore = correctAnswer !== undefined || pointsValue !== undefined;
+  if (shouldRescore) {
+    const effectiveAnswer = correctAnswer !== undefined ? correctAnswer : question.correctAnswer;
 
-    // Update each answer: mark correct/incorrect and award points (or zero when cleared)
     for (const answer of question.answers) {
       const isCorrect =
-        correctAnswer !== null &&
-        answer.answer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+        effectiveAnswer !== null &&
+        answer.answer.trim().toLowerCase() === effectiveAnswer.trim().toLowerCase();
       await db.answer.update({
         where: { id: answer.id },
         data: {
-          correct: correctAnswer === null ? null : isCorrect,
+          correct: effectiveAnswer === null ? null : isCorrect,
           points: isCorrect ? question.pointsValue : 0,
         },
       });
     }
 
-    // Collect affected userIds (recalculate regardless of set or clear)
     const affectedUserIds = [...new Set(question.answers.map((a) => a.userId))];
-
-    // Recompute UserScore for each affected user
-    for (const userId of affectedUserIds) {
-      const predAgg = await db.prediction.aggregate({
-        where: { userId, totalPoints: { not: null } },
-        _sum: { totalPoints: true, basePoints: true, bonusPoints: true },
-        _count: { id: true },
-      });
-
-      const answerAgg = await db.answer.aggregate({
-        where: { userId, points: { not: null } },
-        _sum: { points: true },
-      });
-
-      const exactScores = await db.prediction.count({
-        where: {
-          userId,
-          breakdown: { path: ["accuracyType"], equals: "EXACT" },
-        },
-      });
-
-      const correctWinners = await db.prediction.count({
-        where: { userId, totalPoints: { gt: 0 } },
-      });
-
-      const matchesBet = await db.prediction.count({ where: { userId } });
-
-      const totalPoints =
-        (predAgg._sum.totalPoints ?? 0) + (answerAgg._sum.points ?? 0);
-
-      await db.userScore.upsert({
-        where: { userId },
-        create: { userId, totalPoints, exactScores, correctWinners, matchesBet },
-        update: { totalPoints, exactScores, correctWinners, matchesBet },
-      });
-    }
-
-    // Recalculate overall ranking
-    await recalculateRanking();
+    await recalculateUserScores(affectedUserIds);
   }
 
   return NextResponse.json(question);
@@ -106,7 +112,21 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Collect users who earned points from this question BEFORE the cascade deletes answers
+  const affectedAnswers = await db.answer.findMany({
+    where: { questionId: id, points: { gt: 0 } },
+    select: { userId: true },
+  });
+  const affectedUserIds = [...new Set(affectedAnswers.map((a) => a.userId))];
+
+  // Delete question (cascades to answers)
   await db.question.delete({ where: { id } });
+
+  // Recalculate scores for affected users — without the deleted answers
+  // their question points drop, so total_points must be updated accordingly
+  if (affectedUserIds.length > 0) {
+    await recalculateUserScores(affectedUserIds);
+  }
 
   return NextResponse.json({ ok: true });
 }
