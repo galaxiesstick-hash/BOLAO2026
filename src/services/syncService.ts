@@ -523,22 +523,41 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
  *
  * Tiebreaker order:
  *   1. totalPoints desc
- *   2. exactScores desc (more exact predictions wins)
- *   3. correctWinners desc (more correct results wins)
- *   4. matchesBet desc (more active participant wins)
- *   5. user.createdAt asc (earlier registration wins — last resort)
+ *   2. matchPoints desc  (pontos de jogos)
+ *   3. questionPoints desc (pontos de perguntas)
+ *   4. exactScores desc  (cravadas de placar exato)
+ *   5. user.createdAt asc (quem entrou primeiro no bolão)
+ *   6. user.name asc     (ordem alfabética — último recurso)
  */
 export async function recalculateRanking(): Promise<void> {
-  const allScores = await db.userScore.findMany({
-    where: { user: { role: "PARTICIPANT" } },
-    orderBy: [
-      { totalPoints:    "desc" },
-      { exactScores:    "desc" },
-      { correctWinners: "desc" },
-      { matchesBet:     "desc" },
-      { user: { createdAt: "asc" } },
-    ],
-    select: { id: true },
+  const [allScores, answerAgg] = await Promise.all([
+    db.userScore.findMany({
+      where: { user: { role: "PARTICIPANT" } },
+      include: { user: { select: { id: true, name: true, createdAt: true } } },
+    }),
+    db.answer.groupBy({
+      by: ["userId"],
+      where: { points: { gt: 0 } },
+      _sum: { points: true },
+    }),
+  ]);
+
+  const questionPtsMap = new Map(answerAgg.map(r => [r.userId, r._sum.points ?? 0]));
+
+  allScores.sort((a, b) => {
+    const aQpts = questionPtsMap.get(a.userId) ?? 0;
+    const bQpts = questionPtsMap.get(b.userId) ?? 0;
+    const aMpts = a.totalPoints - aQpts;
+    const bMpts = b.totalPoints - bQpts;
+
+    if (a.totalPoints !== b.totalPoints) return b.totalPoints - a.totalPoints; // 1. total
+    if (aMpts !== bMpts)                 return bMpts - aMpts;                 // 2. match pts
+    if (aQpts !== bQpts)                 return bQpts - aQpts;                 // 3. question pts
+    if (a.exactScores !== b.exactScores) return b.exactScores - a.exactScores; // 4. cravadas
+    const tA = a.user.createdAt.getTime();
+    const tB = b.user.createdAt.getTime();
+    if (tA !== tB) return tA - tB;                                             // 5. quem entrou primeiro
+    return a.user.name.localeCompare(b.user.name, "pt-BR");                    // 6. alfabético
   });
 
   for (let i = 0; i < allScores.length; i++) {

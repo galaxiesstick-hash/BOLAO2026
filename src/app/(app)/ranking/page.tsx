@@ -19,13 +19,7 @@ export default async function RankingPage() {
           payment: { status: "APPROVED" },
         },
       },
-      orderBy: [
-        { totalPoints:    "desc" },
-        { exactScores:    "desc" },
-        { correctWinners: "desc" },
-        { matchesBet:     "desc" },
-        { user: { createdAt: "asc" } },
-      ],
+      orderBy: { totalPoints: "desc" }, // JS sort below applies full tiebreaker criteria
       include: {
         user: {
           select: {
@@ -33,6 +27,7 @@ export default async function RankingPage() {
             name: true,
             avatarUrl: true,
             image: true,
+            createdAt: true,
           },
         },
       },
@@ -60,25 +55,38 @@ export default async function RankingPage() {
   const totalParticipants = approvedCount;
   const divisions = calculateDivisions(totalParticipants);
 
-  // Build ranking entries — compute overall rank from position in sorted list
-  const entries: RankingEntry[] = scores.map((score, idx) => {
+  // Build raw entries with computed matchPoints / questionPoints
+  const rawEntries = scores.map((score) => {
     const questionPoints = questionPtsMap.get(score.user.id) ?? 0;
     const matchPoints = Math.max(0, score.totalPoints - questionPoints);
-    return {
-      userId: score.user.id,
-      userName: score.user.name,
-      avatarUrl: score.user.avatarUrl ?? score.user.image ?? null,
-      totalPoints: score.totalPoints,
-      matchPoints,
-      questionPoints,
-      overallRank: idx + 1, // always use sorted position — never the stale DB value
-      divisionRank: score.divisionRank,
-      division: score.division,
-      exactScores: score.exactScores,
-      correctWinners: score.correctWinners,
-      matchesBet: score.matchesBet,
-    };
+    return { score, questionPoints, matchPoints, createdAt: score.user.createdAt ?? new Date(0) };
   });
+
+  // Sort with full tiebreaker criteria (mirrors recalculateRanking in syncService)
+  rawEntries.sort((a, b) => {
+    if (a.score.totalPoints !== b.score.totalPoints) return b.score.totalPoints - a.score.totalPoints;
+    if (a.matchPoints      !== b.matchPoints)        return b.matchPoints - a.matchPoints;
+    if (a.questionPoints   !== b.questionPoints)      return b.questionPoints - a.questionPoints;
+    if (a.score.exactScores !== b.score.exactScores)  return b.score.exactScores - a.score.exactScores;
+    const tDiff = a.createdAt.getTime() - b.createdAt.getTime();
+    if (tDiff !== 0) return tDiff;
+    return a.score.user.name.localeCompare(b.score.user.name, "pt-BR");
+  });
+
+  const entries: RankingEntry[] = rawEntries.map(({ score, matchPoints, questionPoints }, idx) => ({
+    userId: score.user.id,
+    userName: score.user.name,
+    avatarUrl: score.user.avatarUrl ?? score.user.image ?? null,
+    totalPoints: score.totalPoints,
+    matchPoints,
+    questionPoints,
+    overallRank: idx + 1,
+    divisionRank: score.divisionRank,
+    division: score.division,
+    exactScores: score.exactScores,
+    correctWinners: score.correctWinners,
+    matchesBet: score.matchesBet,
+  }));
 
   return (
     <RankingClient

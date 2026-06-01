@@ -53,7 +53,7 @@ export default async function ComoFuncionaPage() {
             QUANTO MAIS<br />DIFÍCIL, MAIS<br /><span style={{ color: "#C9A84C" }}>VOCÊ LEVA.</span>
           </div>
           <div style={{ fontSize: 12, color: "rgba(231,238,250,0.62)", marginTop: 10, lineHeight: 1.5 }}>
-            A pontuação base é inversamente proporcional à probabilidade. Cravar uma zebra rende muito mais que cravar o óbvio.
+            Cada resultado vale pontos proporcionais à sua dificuldade. Cravar uma zebra rende muito mais que cravar o óbvio — e resultado com menos de 10% de probabilidade vira <span style={{ color: "#E61D25", fontWeight: 700 }}>⚡ Zebra Histórica</span>, valendo 20 pts fixos.
           </div>
         </div>
       </div>
@@ -77,8 +77,8 @@ export default async function ComoFuncionaPage() {
           example="Palpite 2-1 · Real 4-1"
         />
         <ScoringCard
-          color="#5d6f88" icon="½" label="MEIO ACERTO" pts="base"
-          desc="Errou tudo, mas acertou um dos placares."
+          color="#5d6f88" icon="½" label="MEIO ACERTO" pts="1 fixo"
+          desc="Acertou exatamente 1 dos 2 placar mas errou o vencedor."
           example="Palpite 2-1 · Real 2-2"
         />
         <ScoringCard
@@ -89,21 +89,26 @@ export default async function ComoFuncionaPage() {
       </div>
 
       {/* Calculadora de zebra */}
-      <SectionHeader label="Calculadora de zebra" />
+      <SectionHeader label="Pontos base por probabilidade" />
       <div
         style={{
           padding: 16, borderRadius: 16,
           background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)",
         }}
       >
-        <div style={{ fontSize: 11.5, color: "rgba(231,238,250,0.62)", marginBottom: 12 }}>
-          Pontos base por probabilidade do resultado:
+        <div style={{ fontSize: 11, color: "rgba(231,238,250,0.55)", marginBottom: 4, lineHeight: 1.5 }}>
+          Fórmula: <span style={{ color: "#C9A84C", fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}>arred(((100 − prob) ÷ 100) × 15)</span>
+        </div>
+        <div style={{ fontSize: 11, color: "#E61D25", marginBottom: 12 }}>
+          ⚡ Prob &lt; 10% → <strong>20 pts fixos</strong> (Zebra Histórica)
         </div>
         {[
-          { p: "80%", d: "Favorito claro", pts: 6, color: "rgba(231,238,250,0.38)" },
-          { p: "50%", d: "Jogo equilibrado", pts: 10, color: "#3CAC3B" },
-          { p: "20%", d: "Surpresa", pts: 15, color: "#C9A84C" },
-          { p: "5%", d: "Zebrão histórico", pts: 20, color: "#E61D25" },
+          { p: "80%", d: "Favorito claro",   pts: 3,  color: "rgba(231,238,250,0.38)", zebra: false },
+          { p: "60%", d: "Leve favorito",    pts: 6,  color: "rgba(231,238,250,0.55)", zebra: false },
+          { p: "40%", d: "Jogo equilibrado", pts: 9,  color: "#3CAC3B",                zebra: false },
+          { p: "20%", d: "Surpresa",         pts: 12, color: "#C9A84C",                zebra: false },
+          { p: "15%", d: "Grande surpresa",  pts: 13, color: "#C9A84C",                zebra: false },
+          { p: "< 10%", d: "⚡ Zebra Histórica", pts: 20, color: "#E61D25",            zebra: true  },
         ].map((r, i) => (
           <div
             key={r.p}
@@ -111,17 +116,47 @@ export default async function ComoFuncionaPage() {
               display: "flex", alignItems: "center", gap: 12,
               padding: "8px 0",
               borderTop: "1px solid rgba(255,255,255,0.07)",
-              marginTop: i === 0 ? 0 : undefined,
+              background: r.zebra ? "rgba(230,29,37,0.06)" : "transparent",
+              marginLeft: r.zebra ? -16 : 0,
+              marginRight: r.zebra ? -16 : 0,
+              paddingLeft: r.zebra ? 16 : 0,
+              paddingRight: r.zebra ? 16 : 0,
             }}
           >
-            <span className="font-mono" style={{ fontSize: 13, color: r.color, fontWeight: 700, width: 44 }}>
+            <span className="font-mono" style={{ fontSize: 12, color: r.color, fontWeight: 700, width: 50, flexShrink: 0 }}>
               {r.p}
             </span>
             <span style={{ flex: 1, fontSize: 12, color: "#f3f6fb" }}>{r.d}</span>
             <span className="font-display" style={{ fontSize: 18, color: r.color, letterSpacing: 0.5 }}>
-              +{r.pts}
+              {r.pts}
             </span>
             <span style={{ fontSize: 10, color: "rgba(231,238,250,0.38)", fontWeight: 600 }}>pts</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Critérios de desempate */}
+      <SectionHeader label="Critérios de desempate" />
+      <div
+        style={{
+          padding: 14, borderRadius: 14,
+          background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}
+      >
+        {[
+          { n: "1º", t: "Maior pontuação total (jogos + perguntas)", color: "#C9A84C" },
+          { n: "2º", t: "Mais pontos de jogos", color: "#3CAC3B" },
+          { n: "3º", t: "Mais pontos de perguntas bônus", color: "#4d62c9" },
+          { n: "4º", t: "Mais placares exatos cravados", color: "rgba(231,238,250,0.7)" },
+          { n: "5º", t: "Quem se inscreveu primeiro no bolão", color: "rgba(231,238,250,0.5)" },
+          { n: "6º", t: "Ordem alfabética", color: "rgba(231,238,250,0.38)" },
+        ].map((r) => (
+          <div key={r.n} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="font-display" style={{ fontSize: 15, color: r.color, letterSpacing: 0.4, minWidth: 28, flexShrink: 0 }}>
+              {r.n}
+            </span>
+            <span style={{ fontSize: 12, color: "#f3f6fb", lineHeight: 1.4 }}>{r.t}</span>
           </div>
         ))}
       </div>
@@ -138,8 +173,9 @@ export default async function ComoFuncionaPage() {
         {[
           { n: "01", t: "Palpites fecham 10 minutos antes do apito inicial." },
           { n: "02", t: "Você pode editar enquanto o jogo não estiver bloqueado." },
-          { n: "03", t: "Sem palpite = 0 pontos. Mancada vira lanterna." },
-          { n: "04", t: "Após o bloqueio, todos os palpites ficam visíveis para todos." },
+          { n: "03", t: "Probabilidades (odds) só podem ser alteradas até 24h antes do jogo." },
+          { n: "04", t: "Sem palpite = 0 pontos. Mancada vira lanterna." },
+          { n: "05", t: "Após o bloqueio, todos os palpites ficam visíveis para todos." },
         ].map((r) => (
           <div key={r.n} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <span className="font-display" style={{ fontSize: 18, color: "#C9A84C", letterSpacing: 0.4, minWidth: 22 }}>
