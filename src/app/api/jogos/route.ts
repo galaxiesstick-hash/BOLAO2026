@@ -77,6 +77,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Active questions linked to these matches + how many the user already answered.
+  // Powers the "Responder Pergunta" / "Editar Pergunta" button on each match.
+  const questionInfo: Record<string, { count: number; answered: number }> = {};
+  {
+    const matchIds = matches.map((m) => m.id);
+    if (matchIds.length > 0) {
+      const linkedQuestions = await db.question.findMany({
+        where: { active: true, matchId: { in: matchIds } },
+        select: { id: true, matchId: true },
+      });
+      let answeredIds = new Set<string>();
+      if (session?.user?.id && linkedQuestions.length > 0) {
+        const answers = await db.answer.findMany({
+          where: { userId: session.user.id, questionId: { in: linkedQuestions.map((q) => q.id) } },
+          select: { questionId: true },
+        });
+        answeredIds = new Set(answers.map((a) => a.questionId));
+      }
+      for (const q of linkedQuestions) {
+        if (!q.matchId) continue;
+        const info = questionInfo[q.matchId] ?? { count: 0, answered: 0 };
+        info.count += 1;
+        if (answeredIds.has(q.id)) info.answered += 1;
+        questionInfo[q.matchId] = info;
+      }
+    }
+  }
+
   const data = matches.map((match) => ({
     id: match.id,
     externalId: match.externalId,
@@ -111,6 +139,7 @@ export async function GET(req: NextRequest) {
           }
         : null,
     prediction: userPredictions[match.id] ?? null,
+    question: questionInfo[match.id] ?? null,
   }));
 
   return NextResponse.json(data);

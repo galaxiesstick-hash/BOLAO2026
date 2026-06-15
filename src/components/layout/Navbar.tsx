@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Settings } from "lucide-react";
 import { LampLogo } from "@/components/ui/LampMark";
-import { cn } from "@/lib/utils";
+import NotificationBell from "@/components/NotificationBell";
+import type { AppNotification } from "@/components/NotificationItem";
 
 const ROUTE_TITLES: Record<string, string> = {
   "/dashboard": "Início",
@@ -23,9 +24,10 @@ const ROUTE_TITLES: Record<string, string> = {
 interface NavbarProps {
   unreadCount?: number;
   isAdmin?: boolean;
+  notifications?: AppNotification[];
 }
 
-export default function Navbar({ unreadCount = 0, isAdmin = false }: NavbarProps) {
+export default function Navbar({ unreadCount = 0, isAdmin = false, notifications = [] }: NavbarProps) {
   const pathname = usePathname();
 
   return (
@@ -45,31 +47,8 @@ export default function Navbar({ unreadCount = 0, isAdmin = false }: NavbarProps
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            {/* Notification bell */}
-            <Link
-              href="/notificacoes"
-              className={cn(
-                "relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
-                "text-[rgba(231,238,250,0.62)] hover:text-white"
-              )}
-              style={{ background: "#15263f", border: "1px solid rgba(255,255,255,0.07)" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M6 8a6 6 0 0 1 12 0v5l1.5 3h-15L6 13V8z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              </svg>
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[14px] h-3.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5"
-                  style={{ background: "#E61D25", border: "2px solid #15263f" }}>
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </Link>
+            {/* Notification bell — popover (opens/closes in place) */}
+            <NotificationBell unreadCount={unreadCount} notifications={notifications} />
 
             {isAdmin && (
               <Link

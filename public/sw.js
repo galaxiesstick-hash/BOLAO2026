@@ -1,4 +1,33 @@
-const CACHE = "bolao-v1";
+const CACHE = "bolao-v2";
+
+// ── Web Push ──────────────────────────────────────────────────────────────────
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = {}; }
+  const title = data.title || "Bolão Lamparão";
+  const options = {
+    body: data.body || "",
+    icon: "/icons/icon-192x192.png",
+    badge: "/icons/icon-192x192.png",
+    vibrate: [80, 40, 80],
+    tag: data.tag,
+    data: { url: data.url || "/dashboard" },
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/dashboard";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.includes(url) && "focus" in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});
 
 // Static assets worth caching
 const PRECACHE = ["/", "/dashboard", "/manifest.json", "/icons/icon-192x192.png", "/icons/icon-512x512.png"];

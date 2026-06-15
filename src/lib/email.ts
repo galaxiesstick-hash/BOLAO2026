@@ -324,6 +324,306 @@ export async function sendAdminPaymentApprovedEmail(params: {
   });
 }
 
+const WHATSAPP_GROUP_URL = "https://chat.whatsapp.com/Bqpy7AQnce6GN3h2ekB6nb?s=cl&p=a&mlu=2";
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+}
+
+/**
+ * Compact digest e-mail with everyone's predictions for one match — sent to all
+ * participants the moment predictions lock (10 min before kickoff).
+ */
+export async function sendPredictionsDigestEmail(params: {
+  to: string;
+  match: { homeTeamName: string; awayTeamName: string; homeFlag: string; awayFlag: string; kickoff: Date };
+  predictions: { name: string; rank: number | null; homeGoals: number; awayGoals: number }[];
+}) {
+  const { to, match, predictions } = params;
+  const kickoffStr =
+    new Intl.DateTimeFormat("pt-BR", {
+      weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    }).format(match.kickoff).toUpperCase() + " BRT";
+
+  // Group identical scorelines — most-picked first (then by total goals).
+  type Person = { name: string; rank: number | null };
+  const groups = new Map<string, { home: number; away: number; people: Person[] }>();
+  for (const p of predictions) {
+    const key = `${p.homeGoals}-${p.awayGoals}`;
+    const g = groups.get(key) ?? { home: p.homeGoals, away: p.awayGoals, people: [] };
+    g.people.push({ name: p.name, rank: p.rank });
+    groups.set(key, g);
+  }
+  const sortedGroups = [...groups.values()].sort(
+    (a, b) => b.people.length - a.people.length || a.home + a.away - (b.home + b.away),
+  );
+
+  const total = predictions.length;
+  const rows = sortedGroups
+    .map((g) => {
+      const pct = total > 0 ? Math.round((g.people.length / total) * 100) : 0;
+      const people = g.people
+        .map((person) => {
+          const badge = person.rank != null ? `#${person.rank}` : "–";
+          return `<tr><td style="padding:5px 14px;">
+            <table cellpadding="0" cellspacing="0"><tr>
+              <td style="min-width:34px;height:24px;border-radius:7px;background:rgba(201,168,76,0.14);border:1px solid rgba(201,168,76,0.35);text-align:center;font-size:11.5px;font-weight:800;color:#C9A84C;">${badge}</td>
+              <td style="padding-left:10px;font-size:12.5px;color:#f3f6fb;">${escapeHtml(person.name)}</td>
+            </tr></table>
+          </td></tr>`;
+        })
+        .join("");
+      return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;background:#0f1d33;">
+        <tr><td style="padding:8px 14px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06);">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="font-size:19px;font-weight:800;color:#f3f6fb;letter-spacing:0.5px;">${g.home} – ${g.away}</td>
+            <td align="right" style="font-size:11px;color:rgba(231,238,250,0.5);">${g.people.length} · ${pct}%</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="height:3px;background:#2A398D;width:${pct}%;font-size:0;line-height:0;">&nbsp;</td>
+            <td style="height:3px;background:rgba(255,255,255,0.05);font-size:0;line-height:0;">&nbsp;</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:5px 0 6px;">
+          <table width="100%" cellpadding="0" cellspacing="0">${people}</table>
+        </td></tr>
+      </table>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#060f1f;padding:28px 14px;"><tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+      <tr><td style="background:#0f1d33;border-radius:18px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+        <tr><td style="background:rgba(201,168,76,0.12);border-bottom:1px solid rgba(201,168,76,0.25);padding:18px 22px;text-align:center;">
+          <div style="font-size:10.5px;font-weight:800;letter-spacing:1.6px;color:#C9A84C;text-transform:uppercase;margin-bottom:8px;">🔒 Palpites bloqueados</div>
+          <table align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr>
+            <td style="padding-right:8px;"><img src="${match.homeFlag}" width="32" height="22" alt="" style="border-radius:3px;display:block;border:1px solid rgba(255,255,255,0.15);" /></td>
+            <td style="font-size:17px;font-weight:800;color:#f3f6fb;white-space:nowrap;">${escapeHtml(match.homeTeamName)}</td>
+            <td style="padding:0 9px;font-size:13px;color:rgba(231,238,250,0.45);">×</td>
+            <td style="font-size:17px;font-weight:800;color:#f3f6fb;white-space:nowrap;">${escapeHtml(match.awayTeamName)}</td>
+            <td style="padding-left:8px;"><img src="${match.awayFlag}" width="32" height="22" alt="" style="border-radius:3px;display:block;border:1px solid rgba(255,255,255,0.15);" /></td>
+          </tr></table>
+          <div style="font-size:11px;color:rgba(231,238,250,0.55);margin-top:8px;">${kickoffStr} · ${predictions.length} palpite${predictions.length !== 1 ? "s" : ""}</div>
+        </td></tr>
+        <tr><td style="padding:12px 12px 6px;">
+          ${
+            predictions.length === 0
+              ? `<p style="text-align:center;color:rgba(231,238,250,0.45);font-size:13px;padding:18px;">Ninguém palpitou neste jogo.</p>`
+              : rows
+          }
+        </td></tr>
+      </td></tr>
+      <tr><td style="padding-top:16px;text-align:center;">
+        <p style="margin:0;font-size:11px;color:rgba(231,238,250,0.28);">Bolão Lamparão Copa 2026 · bolao.bubhug.com</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? "Bolão Copa 2026 <contatobubhug@gmail.com>",
+    to,
+    subject: `🔒 Palpites bloqueados — ${match.homeTeamName} × ${match.awayTeamName}`,
+    html,
+  });
+}
+
+/**
+ * Poll announcement email (WhatsApp poll about the 2nd-place prize).
+ * Mobile-first / short. When `pendingPayment` is true, adds a personalized
+ * payment reminder block + CTA to finish the PIX.
+ */
+export async function sendPollEmail(params: { to: string; name: string; pendingPayment: boolean }) {
+  const { to, name, pendingPayment } = params;
+  const firstName = name.split(" ")[0];
+
+  const paymentBlock = pendingPayment
+    ? `
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 4px;">
+                      <tr><td style="border-top:1px solid rgba(255,255,255,0.07);height:1px;">&nbsp;</td></tr>
+                    </table>
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(230,29,37,0.10);border:1px solid rgba(230,29,37,0.3);border-radius:12px;margin:18px 0 8px;">
+                      <tr><td style="padding:14px 18px;">
+                        <div style="font-size:13px;color:rgba(231,238,250,0.85);line-height:1.6;">
+                          ⚠️ <strong style="color:#f3f6fb;">Falta confirmar seu pagamento.</strong> Pra disputar valendo e começar a palpitar na Copa, finalize o PIX da inscrição.
+                        </div>
+                        <table cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr><td>
+                          <a href="https://bolao.bubhug.com/pagamento" style="display:inline-block;padding:11px 26px;background:#E61D25;color:#ffffff;font-size:13px;font-weight:800;text-decoration:none;border-radius:10px;letter-spacing:0.5px;text-transform:uppercase;">
+                            CONFIRMAR PAGAMENTO
+                          </a>
+                        </td></tr></table>
+                      </td></tr>
+                    </table>`
+    : "";
+
+  const subject = pendingPayment
+    ? "🗳️ Vote na premiação + garanta sua vaga — Bolão Copa 2026"
+    : "🗳️ Vote: premiação do Bolão (leva 2 min)";
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Enquete da premiação — Bolão Copa 2026</title></head>
+<body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#060f1f;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+
+        <!-- Logo -->
+        <tr><td align="center" style="padding-bottom:24px;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="background:#C9A84C;width:4px;border-radius:2px;">&nbsp;</td>
+            <td style="padding-left:10px;">
+              <div style="font-size:22px;font-weight:900;color:#f3f6fb;letter-spacing:2px;text-transform:uppercase;">BOLÃO</div>
+              <div style="font-size:11px;color:#C9A84C;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Copa do Mundo 2026</div>
+            </td>
+          </tr></table>
+        </td></tr>
+
+        <!-- Card -->
+        <tr><td style="background:#0f1d33;border-radius:20px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="background:rgba(42,57,141,0.18);border-bottom:1px solid rgba(42,57,141,0.35);padding:20px 28px;text-align:center;">
+              <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8a9bff;text-transform:uppercase;margin-bottom:6px;">🗳️ ENQUETE ABERTA</div>
+              <div style="font-size:19px;font-weight:900;color:#f3f6fb;letter-spacing:0.3px;">Vote na premiação do Bolão</div>
+            </td></tr>
+
+            <tr><td style="padding:24px 28px;">
+              <p style="margin:0 0 14px;font-size:14.5px;color:#f3f6fb;line-height:1.6;">Fala, <strong>${firstName}</strong>! 🔥</p>
+              <p style="margin:0 0 14px;font-size:13.5px;color:rgba(231,238,250,0.78);line-height:1.7;">
+                Tem <strong style="color:#f3f6fb;">enquete no grupo do WhatsApp</strong> pra decidirmos <strong>juntos</strong> a premiação final.
+              </p>
+              <p style="margin:0 0 20px;font-size:13.5px;color:rgba(231,238,250,0.78);line-height:1.7;">
+                A proposta: o <strong style="color:#C9A84C;">2º lugar</strong> passar a levar <strong style="color:#C9A84C;">20% do total arrecadado</strong> (hoje é R$ 31 fixo). Nada definido — a <strong>maioria decide</strong>.
+              </p>
+
+              <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+                <a href="${WHATSAPP_GROUP_URL}" style="display:inline-block;padding:14px 32px;background:#3CAC3B;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;box-shadow:0 8px 24px -6px rgba(60,172,59,0.5);">
+                  Entrar no grupo e votar
+                </a>
+              </td></tr></table>
+
+              <p style="margin:18px 0 0;font-size:12.5px;color:rgba(231,238,250,0.5);line-height:1.6;text-align:center;">
+                O bolão é de <strong style="color:rgba(231,238,250,0.7);">todos nós</strong>! 🏆
+              </p>
+              ${paymentBlock}
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- Rodapé -->
+        <tr><td style="padding-top:22px;text-align:center;">
+          <p style="margin:0 0 5px;font-size:11px;color:rgba(231,238,250,0.28);">Bolão Lamparão Copa 2026 · bolao.bubhug.com</p>
+          <p style="margin:0;font-size:11px;color:rgba(231,238,250,0.18);">Você recebeu este e-mail porque participa do bolão.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? "Bolão Copa 2026 <contatobubhug@gmail.com>",
+    to,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Urgency email to participants who still have a PENDING payment, now that the
+ * Cup has kicked off. Pushes them to finish the PIX and get in.
+ */
+export async function sendPendingEntryEmail(params: { to: string; name: string }) {
+  const { to, name } = params;
+  const firstName = name.split(" ")[0];
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>A Copa começou — garanta sua vaga!</title></head>
+<body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#060f1f;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+
+        <!-- Logo -->
+        <tr><td align="center" style="padding-bottom:24px;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="background:#C9A84C;width:4px;border-radius:2px;">&nbsp;</td>
+            <td style="padding-left:10px;">
+              <div style="font-size:22px;font-weight:900;color:#f3f6fb;letter-spacing:2px;text-transform:uppercase;">BOLÃO</div>
+              <div style="font-size:11px;color:#C9A84C;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Copa do Mundo 2026</div>
+            </td>
+          </tr></table>
+        </td></tr>
+
+        <!-- Card -->
+        <tr><td style="background:#0f1d33;border-radius:20px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+          <!-- Alert strip -->
+          <tr><td style="background:rgba(230,29,37,0.14);border-bottom:1px solid rgba(230,29,37,0.35);padding:22px 30px;text-align:center;">
+            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#E61D25;text-transform:uppercase;margin-bottom:6px;">🚨 A COPA COMEÇOU HOJE</div>
+            <div style="font-size:21px;font-weight:900;color:#f3f6fb;letter-spacing:0.3px;">Sua vaga ainda não está confirmada!</div>
+          </td></tr>
+
+          <tr><td style="padding:26px 30px;">
+            <p style="margin:0 0 14px;font-size:14.5px;color:#f3f6fb;line-height:1.6;">Fala, <strong>${firstName}</strong>! 🔥</p>
+            <p style="margin:0 0 16px;font-size:13.5px;color:rgba(231,238,250,0.78);line-height:1.7;">
+              A <strong style="color:#C9A84C;">Copa do Mundo 2026 começou HOJE</strong> e seu pagamento ainda consta como <strong style="color:#E61D25;">pendente</strong>. Não fique de fora — cada jogo que passa é ponto que você deixa na mesa! ⏳
+            </p>
+
+            <!-- Prize -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:12px;margin:6px 0 20px;">
+              <tr><td style="padding:14px 18px;">
+                <div style="font-size:10px;color:#C9A84C;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:8px;">Premiação em dinheiro</div>
+                <div style="font-size:13px;color:rgba(231,238,250,0.85);line-height:1.8;">
+                  🥇 <strong style="color:#C9A84C;">1º lugar:</strong> 80% do pote<br/>
+                  🥈 <strong style="color:#dcdcef;">2º lugar:</strong> 20% do pote<br/>
+                  💰 Pote atual: <strong style="color:#3CAC3B;">R$ 1.513,44</strong> e subindo!
+                </div>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 22px;font-size:13.5px;color:rgba(231,238,250,0.78);line-height:1.7;">
+              É rapidinho: finalize o <strong style="color:#f3f6fb;">PIX da inscrição (R$ 30)</strong> e já comece a cravar seus palpites.
+            </p>
+
+            <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+              <a href="https://bolao.bubhug.com/pagamento" style="display:inline-block;padding:15px 40px;background:#E61D25;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;box-shadow:0 10px 26px -6px rgba(230,29,37,0.55);">
+                Confirmar pagamento agora
+              </a>
+            </td></tr></table>
+
+            <p style="margin:18px 0 0;font-size:11.5px;color:rgba(231,238,250,0.45);line-height:1.6;text-align:center;">
+              Já pagou e ainda aparece como pendente? Responda este e-mail que a gente confirma na hora.
+            </p>
+          </td></tr>
+        </td></tr>
+
+        <!-- Rodapé -->
+        <tr><td style="padding-top:22px;text-align:center;">
+          <p style="margin:0;font-size:11px;color:rgba(231,238,250,0.28);">Bolão Lamparão Copa 2026 · bolao.bubhug.com</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? "Bolão Copa 2026 <contatobubhug@gmail.com>",
+    to,
+    subject: "🚨 A Copa começou HOJE — sua vaga no Bolão ainda não está confirmada!",
+    html,
+  });
+}
+
 export async function sendKickoffReminderEmail(params: {
   to: string;
   name: string;

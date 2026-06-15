@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { getFlagUrl, formatTime } from "@/lib/utils";
-import { calculateMatchPoints, ZEBRA_HISTORICA_THRESHOLD, ZEBRA_HISTORICA_POINTS } from "@/lib/scoring";
+import { calculateMatchPoints, calculateScore, ZEBRA_HISTORICA_THRESHOLD, ZEBRA_HISTORICA_POINTS } from "@/lib/scoring";
+import MatchQuestions from "./MatchQuestions";
 
 type Props = {
   matchId: string;
@@ -24,6 +25,7 @@ type Props = {
   homeProb?: number | null;
   drawProb?: number | null;
   awayProb?: number | null;
+  questionCount?: number;
 };
 
 type PublicPrediction = {
@@ -37,14 +39,7 @@ type PublicPrediction = {
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-type TabId = "palpite" | "stats" | "confronto" | "bolao";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "palpite", label: "Palpite" },
-  { id: "stats", label: "Estatísticas" },
-  { id: "confronto", label: "Confronto" },
-  { id: "bolao", label: "Bolão" },
-];
+type TabId = "palpite" | "bolao" | "perguntas";
 
 export default function MatchDetailClient({
   matchId,
@@ -62,9 +57,18 @@ export default function MatchDetailClient({
   homeProb,
   drawProb,
   awayProb,
+  questionCount = 0,
 }: Props) {
+  const tabs: { id: TabId; label: string }[] = [
+    { id: "palpite", label: "Palpite" },
+    { id: "bolao", label: "Bolão" },
+    ...(questionCount > 0 ? [{ id: "perguntas" as TabId, label: questionCount > 1 ? `Perguntas (${questionCount})` : "Pergunta" }] : []),
+  ];
   const [activeTab, setActiveTab] = useState<TabId>(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#bolao") return "bolao";
+    if (typeof window !== "undefined") {
+      if (window.location.hash === "#bolao") return "bolao";
+      if (window.location.hash === "#perguntas" && questionCount > 0) return "perguntas";
+    }
     return "palpite";
   });
   const [homeGoals, setHomeGoals] = useState<number | null>(existingPrediction?.homeGoals ?? null);
@@ -222,7 +226,7 @@ export default function MatchDetailClient({
 
       {/* Tab bar */}
       <div style={{ display: "flex", gap: 16, borderBottom: "1px solid rgba(255,255,255,0.07)", marginBottom: 16 }}>
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -265,14 +269,6 @@ export default function MatchDetailClient({
         />
       )}
 
-      {activeTab === "stats" && (
-        <PlaceholderTab icon="📊" title="Estatísticas" desc="Dados do jogo disponíveis após o apito inicial." />
-      )}
-
-      {activeTab === "confronto" && (
-        <PlaceholderTab icon="⚔️" title="Histórico" desc="Confrontos anteriores entre as seleções." />
-      )}
-
       {activeTab === "bolao" && (
         isLocked
           ? <BolaoTab
@@ -282,12 +278,19 @@ export default function MatchDetailClient({
               awayTeamCode={awayTeamCode}
               matchStatus={matchStatus}
               liveScore={liveScore}
+              homeProb={homeProb ?? null}
+              drawProb={drawProb ?? null}
+              awayProb={awayProb ?? null}
             />
           : <PlaceholderTab
               icon="🔒"
               title="Palpites do Bolão"
               desc={`Disponível a partir das ${formatTime(new Date(new Date(kickoff).getTime() - 10 * 60 * 1000))} BRT — após o lock.`}
             />
+      )}
+
+      {activeTab === "perguntas" && (
+        <MatchQuestions matchId={matchId} locked={isLocked} />
       )}
     </div>
   );
@@ -297,6 +300,7 @@ export default function MatchDetailClient({
 
 function BolaoTab({
   predictions, loading, homeTeamCode, awayTeamCode, matchStatus, liveScore,
+  homeProb, drawProb, awayProb,
 }: {
   predictions: PublicPrediction[] | null;
   loading: boolean;
@@ -304,6 +308,9 @@ function BolaoTab({
   awayTeamCode: string;
   matchStatus: string;
   liveScore: { home: number; away: number } | null;
+  homeProb: number | null;
+  drawProb: number | null;
+  awayProb: number | null;
 }) {
   if (loading || predictions === null) {
     return (
@@ -327,6 +334,19 @@ function BolaoTab({
   const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
 
   const isFinished = matchStatus === "FINISHED";
+  const isLive = matchStatus === "LIVE";
+  const showLivePoints = (isLive || isFinished) && liveScore !== null;
+
+  const getLivePoints = (pred: PublicPrediction): number | null => {
+    if (!showLivePoints) return null;
+    if (isFinished && pred.totalPoints !== null) return pred.totalPoints;
+    const result = calculateScore(
+      pred.homeGoals, pred.awayGoals,
+      liveScore!.home, liveScore!.away,
+      homeProb ?? 33.33, drawProb ?? 33.33, awayProb ?? 33.33,
+    );
+    return result.totalPoints;
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -404,11 +424,20 @@ function BolaoTab({
                   <span style={{ flex: 1, fontSize: 12, color: p.isCurrentUser ? "#3CAC3B" : "#f3f6fb", fontWeight: p.isCurrentUser ? 700 : 500 }}>
                     {p.userName} {p.isCurrentUser && "(você)"}
                   </span>
-                  {isFinished && p.totalPoints !== null && (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: p.totalPoints > 0 ? "#C9A84C" : "rgba(231,238,250,0.38)", fontFamily: "monospace" }}>
-                      {p.totalPoints > 0 ? `+${p.totalPoints}` : "0"} pts
-                    </span>
-                  )}
+                  {showLivePoints && (() => {
+                    const pts = getLivePoints(p);
+                    if (pts === null) return null;
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: pts > 0 ? "#C9A84C" : "rgba(231,238,250,0.38)", fontFamily: "monospace" }}>
+                          {pts > 0 ? `+${pts}` : "0"} pts
+                        </span>
+                        {isLive && (
+                          <span style={{ fontSize: 9, color: "#E61D25", fontWeight: 700, letterSpacing: 0.3 }}>⚡ parcial</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -540,10 +569,11 @@ function PointsTable({
 
 function AccuracyBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    EXACT:          { label: "CRAVADO!",         color: "#C9A84C", bg: "rgba(201,168,76,0.15)" },
-    ALMOST_EXACT:   { label: "QUASE CRAVOU",      color: "#3CAC3B", bg: "rgba(60,172,59,0.15)" },
-    WINNER_ONLY:    { label: "ACERTO PARCIAL",    color: "#4d62c9", bg: "rgba(77,98,201,0.15)" },
-    ONE_SCORE_ONLY: { label: "MEIO ACERTO",       color: "rgba(231,238,250,0.55)", bg: "rgba(255,255,255,0.05)" },
+    EXACT:          { label: "CRAVADO!",           color: "#C9A84C", bg: "rgba(201,168,76,0.15)" },
+    ALMOST_EXACT:   { label: "QUASE CRAVOU",       color: "#3CAC3B", bg: "rgba(60,172,59,0.15)" },
+    GOAL_DIFF:      { label: "ACERTOU O SALDO",    color: "#22a5b0", bg: "rgba(34,165,176,0.15)" },
+    WINNER_ONLY:    { label: "ACERTO PARCIAL",     color: "#4d62c9", bg: "rgba(77,98,201,0.15)" },
+    ONE_SCORE_ONLY: { label: "ESMOLA",            color: "rgba(231,238,250,0.55)", bg: "rgba(255,255,255,0.05)" },
     MISS:           { label: "ERROU TUDO",        color: "#E61D25", bg: "rgba(230,29,37,0.10)" },
   };
   const s = map[type];

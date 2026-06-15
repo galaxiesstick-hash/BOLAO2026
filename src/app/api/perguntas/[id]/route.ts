@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isQuestionLocked } from "@/lib/questions";
 import { z } from "zod";
 
 const schema = z.object({
@@ -27,14 +28,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Dados inválidos" }, { status: 422 });
   }
 
-  const question = await db.question.findUnique({ where: { id } });
+  const question = await db.question.findUnique({
+    where: { id },
+    include: { match: { select: { kickoff: true, status: true } } },
+  });
   if (!question || !question.active) {
     return NextResponse.json({ error: "Pergunta não encontrada" }, { status: 404 });
   }
 
-  // Check deadline
-  if (question.deadline && question.deadline < new Date()) {
-    return NextResponse.json({ error: "Prazo para responder esta pergunta já encerrou." }, { status: 400 });
+  // Locked when the linked match locks (kickoff − 10 min) or, for standalone
+  // questions, once the deadline passes.
+  if (isQuestionLocked(question)) {
+    return NextResponse.json({ error: "Esta pergunta está bloqueada para respostas." }, { status: 400 });
   }
 
   const answer = await db.answer.upsert({

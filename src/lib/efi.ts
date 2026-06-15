@@ -160,3 +160,33 @@ export function efiConfigured(): boolean {
   const certOk = SANDBOX || !!(CERT_PEM_B64 && KEY_PEM_B64) || !!CERT_P12_B64;
   return credentialsOk && certOk;
 }
+
+/**
+ * Current Efí PIX account balance in BRL (already net of PIX fees).
+ * Requires the "consultar saldo" scope on the application. Returns null on failure.
+ */
+export async function getAccountBalance(): Promise<number | null> {
+  if (!CLIENT_ID || !CLIENT_SECRET) return null;
+  const efi = buildClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = await (efi as any).getAccountBalance({});
+  const v = r?.saldo != null ? Number(r.saldo) : null;
+  return v != null && !isNaN(v) ? v : null;
+}
+
+// Briefly cached so the balance can be read on every ranking load without
+// calling Efí each time. Falls back to the last known value on error.
+let _balanceCache: { value: number | null; at: number } = { value: null, at: 0 };
+
+export async function getCachedAccountBalance(ttlMs = 60_000): Promise<number | null> {
+  if (_balanceCache.value !== null && Date.now() - _balanceCache.at < ttlMs) {
+    return _balanceCache.value;
+  }
+  try {
+    const v = await getAccountBalance();
+    if (v !== null) _balanceCache = { value: v, at: Date.now() };
+    return v ?? _balanceCache.value;
+  } catch {
+    return _balanceCache.value;
+  }
+}

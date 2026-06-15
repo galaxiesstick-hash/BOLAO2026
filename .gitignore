@@ -36,6 +36,18 @@ yarn-error.log*
 # vercel
 .vercel
 
+# secrets / certificates (NEVER commit)
+cert/
+*.p12
+
+# local-only / not part of the app
+/Bolaov3/
+/.claude/
+*.docx
+/check.sql
+*.sql.gz
+*.tar.gz
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

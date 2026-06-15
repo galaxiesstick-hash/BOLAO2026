@@ -1,24 +1,49 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 const SITE_URL = "https://bolao.bubhug.com";
 
-const INVITE_TEXT = `🏆 BOLÃO LAMPARÃO — Copa do Mundo 2026
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-Faça seus palpites e mostre quem manda nos cravados!
+/** Urgency line based on how far the first World Cup match is (BRT calendar). */
+function startPhrase(firstKickoff?: string): string {
+  if (!firstKickoff) return "⚽ A Copa está chegando — garanta sua vaga!";
+  const k = new Date(firstKickoff);
+  const now = new Date();
+  if (now >= k) return "⚡ A COPA JÁ COMEÇOU! Entre e comece a pontuar AGORA!";
+  const dayStr = (d: Date) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const diffDays = Math.round((new Date(dayStr(k)).getTime() - new Date(dayStr(now)).getTime()) / 86400000);
+  if (diffDays <= 0) return "🚨 A COPA COMEÇA HOJE! Últimas horas pra entrar e já cravar no 1º jogo!";
+  if (diffDays === 1) return "🚨 A COPA COMEÇA AMANHÃ! Corre que dá tempo de entrar e cravar já no 1º jogo!";
+  return `⏳ Faltam ${diffDays} dias pra Copa! Entre agora e não perca o 1º jogo!`;
+}
 
-✅ Palpites em todos os 104 jogos da Copa 2026
-🎯 Placares improváveis valem mais — zebra tem recompensa
-🔒 Palpites fecham 10 min antes de cada jogo
+function buildInviteText(prizePool: number, firstKickoff?: string): string {
+  const prizeBlock =
+    prizePool > 0
+      ? `💰 PREMIAÇÃO ATUAL: ${brl(prizePool)} (e subindo!)
+🥇 1º lugar: ${brl(prizePool * 0.8)} (80%)
+🥈 2º lugar: ${brl(prizePool * 0.2)} (20%)
+🥉 3º lugar: 1 pote de chuvisco`
+      : `💰 PREMIAÇÃO EM DINHEIRO
+🥇 1º lugar: 80% do pote
+🥈 2º lugar: 20% do pote
+🥉 3º lugar: 1 pote de chuvisco`;
 
-💰 PREMIAÇÃO:
-🥇 1º lugar: Todo o pote (menos os R$31 do vice)
-🥈 2º lugar: R$ 31,00
-🥉 3º lugar: 1 pote de chuvisco 🍺
+  return `🏆 BOLÃO LAMPARÃO — Copa do Mundo 2026
 
-👉 Acesse e se inscreva agora:
+${startPhrase(firstKickoff)}
+
+${prizeBlock}
+
+🎯 Placares improváveis valem mais — zebra dá ponto!
+🔒 Palpites fecham 10 min antes de cada jogo.
+
+⚡ Garanta sua vaga AGORA e já comece no primeiro jogo:
 ${SITE_URL}`;
+}
 
 const SHARE_OPTIONS = [
   {
@@ -31,7 +56,6 @@ const SHARE_OPTIONS = [
         <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.558 4.122 1.533 5.857L.057 23.885a.5.5 0 0 0 .609.609l6.012-1.476A11.952 11.952 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22a9.953 9.953 0 0 1-5.19-1.455l-.371-.224-3.857.947.979-3.768-.242-.39A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
       </svg>
     ),
-    getUrl: () => `https://wa.me/?text=${encodeURIComponent(INVITE_TEXT)}`,
   },
   {
     id: "telegram",
@@ -42,7 +66,6 @@ const SHARE_OPTIONS = [
         <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.41 13.93 4.46 13c-.656-.204-.669-.657.136-.975l11.57-4.461c.548-.196 1.025.127.728.657z"/>
       </svg>
     ),
-    getUrl: () => `https://t.me/share/url?url=${encodeURIComponent(SITE_URL)}&text=${encodeURIComponent(INVITE_TEXT)}`,
   },
   {
     id: "copy",
@@ -54,7 +77,6 @@ const SHARE_OPTIONS = [
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
     ),
-    getUrl: () => SITE_URL,
   },
   {
     id: "text",
@@ -65,36 +87,46 @@ const SHARE_OPTIONS = [
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     ),
-    getUrl: () => INVITE_TEXT,
   },
 ];
 
-export default function ShareButton() {
+export default function ShareButton({ prizePool = 0, firstKickoff }: { prizePool?: number; firstKickoff?: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+
+  const inviteText = useMemo(() => buildInviteText(prizePool, firstKickoff), [prizePool, firstKickoff]);
+
+  const urlFor = useCallback((id: string): string => {
+    switch (id) {
+      case "whatsapp": return `https://wa.me/?text=${encodeURIComponent(inviteText)}`;
+      case "telegram": return `https://t.me/share/url?url=${encodeURIComponent(SITE_URL)}&text=${encodeURIComponent(inviteText)}`;
+      case "text":     return inviteText;
+      default:         return SITE_URL;
+    }
+  }, [inviteText]);
 
   const handleNativeShare = useCallback(async () => {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ title: "Bolão Lamparão — Copa 2026", text: INVITE_TEXT, url: SITE_URL });
+        await navigator.share({ title: "Bolão Lamparão — Copa 2026", text: inviteText, url: SITE_URL });
         return;
       } catch { /* cancelled or unsupported */ }
     }
     setOpen(true);
-  }, []);
+  }, [inviteText]);
 
-  const handleOption = useCallback(async (opt: typeof SHARE_OPTIONS[0]) => {
-    if (opt.id === "copy" || opt.id === "text") {
+  const handleOption = useCallback(async (id: string) => {
+    if (id === "copy" || id === "text") {
       try {
-        await navigator.clipboard.writeText(opt.getUrl());
-        setCopied(opt.id);
+        await navigator.clipboard.writeText(urlFor(id));
+        setCopied(id);
         setTimeout(() => setCopied(null), 2000);
       } catch { /* ignore */ }
       return;
     }
-    window.open(opt.getUrl(), "_blank", "noopener,noreferrer");
+    window.open(urlFor(id), "_blank", "noopener,noreferrer");
     setOpen(false);
-  }, []);
+  }, [urlFor]);
 
   return (
     <>
@@ -139,7 +171,7 @@ export default function ShareButton() {
                 <div style={{ fontSize: 12, color: "rgba(231,238,250,0.5)", marginTop: 3, letterSpacing: 0.5 }}>COPA DO MUNDO 2026</div>
                 <div style={{ margin: "14px 0 12px", height: 1, background: "linear-gradient(90deg, transparent, rgba(201,168,76,0.4), transparent)" }} />
                 <div style={{ textAlign: "left", fontSize: 11.5, color: "rgba(231,238,250,0.7)", lineHeight: 1.7, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "10px 12px" }}>
-                  {INVITE_TEXT.split("\n").map((line, i) => (
+                  {inviteText.split("\n").map((line, i) => (
                     <div key={i} style={{ minHeight: line ? undefined : "0.5em" }}>{line || null}</div>
                   ))}
                 </div>
@@ -152,7 +184,7 @@ export default function ShareButton() {
               {SHARE_OPTIONS.map((opt) => {
                 const isCopied = copied === opt.id;
                 return (
-                  <button key={opt.id} onClick={() => handleOption(opt)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderRadius: 14, background: isCopied ? `${opt.color}22` : "rgba(255,255,255,0.04)", border: `1px solid ${isCopied ? opt.color + "55" : "rgba(255,255,255,0.08)"}`, color: isCopied ? opt.color : "#f3f6fb", fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "all 0.2s", textAlign: "left" }}>
+                  <button key={opt.id} onClick={() => handleOption(opt.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderRadius: 14, background: isCopied ? `${opt.color}22` : "rgba(255,255,255,0.04)", border: `1px solid ${isCopied ? opt.color + "55" : "rgba(255,255,255,0.08)"}`, color: isCopied ? opt.color : "#f3f6fb", fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "all 0.2s", textAlign: "left" }}>
                     <span style={{ color: opt.color, opacity: isCopied ? 1 : 0.85, flexShrink: 0 }}>{opt.icon}</span>
                     <span>{isCopied ? "Copiado!" : opt.label}</span>
                   </button>

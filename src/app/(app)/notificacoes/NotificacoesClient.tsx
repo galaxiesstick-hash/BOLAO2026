@@ -1,32 +1,9 @@
 "use client";
 
-import { Bell, CheckCheck, CreditCard, Trophy, Star, Info } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
+import NotificationItem, { type AppNotification } from "@/components/NotificationItem";
 
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  createdAt: Date;
-}
-
-const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  payment_approved: { icon: CreditCard, color: "#3CAC3B", bg: "rgba(60,172,59,0.12)" },
-  match_result: { icon: Trophy, color: "#C9A84C", bg: "rgba(201,168,76,0.12)" },
-  ranking_change: { icon: Star, color: "#2A398D", bg: "rgba(42,57,141,0.12)" },
-  default: { icon: Info, color: "rgba(231,238,250,0.62)", bg: "rgba(255,255,255,0.06)" },
-};
-
-function timeAgo(date: Date): string {
-  const diff = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-  if (diff < 60) return "agora mesmo";
-  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
-  return `${Math.floor(diff / 86400)}d atrás`;
-}
-
-export default function NotificacoesClient({ notifications }: { notifications: Notification[] }) {
+export default function NotificacoesClient({ notifications }: { notifications: AppNotification[] }) {
   return (
     <div style={{ maxWidth: 480, margin: "0 auto" }}>
       {/* Header */}
@@ -67,59 +44,7 @@ export default function NotificacoesClient({ notifications }: { notifications: N
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {notifications.map((n) => {
-            const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.default;
-            const Icon = cfg.icon;
-            return (
-              <div
-                key={n.id}
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: 16,
-                  background: n.read ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.055)",
-                  border: n.read ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(255,255,255,0.11)",
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "flex-start",
-                }}
-              >
-                {/* Icon */}
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                  background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <Icon size={16} color={cfg.color} />
-                </div>
-
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{
-                    fontSize: 13, fontWeight: 700, color: "#fff",
-                    marginBottom: 3, lineHeight: 1.3,
-                  }}>
-                    {n.title}
-                  </p>
-                  <p style={{
-                    fontSize: 12, color: "rgba(231,238,250,0.55)",
-                    lineHeight: 1.5, wordBreak: "break-word",
-                  }}>
-                    {n.message}
-                  </p>
-                  <p style={{ fontSize: 10.5, color: "rgba(231,238,250,0.28)", marginTop: 6 }}>
-                    {timeAgo(n.createdAt)}
-                  </p>
-                </div>
-
-                {/* Unread dot */}
-                {!n.read && (
-                  <div style={{
-                    width: 7, height: 7, borderRadius: 99,
-                    background: "#3CAC3B", flexShrink: 0, marginTop: 4,
-                  }} />
-                )}
-              </div>
-            );
-          })}
+          {notifications.map((n) => <NotificationItem key={n.id} n={n} />)}
         </div>
       )}
     </div>

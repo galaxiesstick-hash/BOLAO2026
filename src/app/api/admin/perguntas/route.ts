@@ -14,6 +14,11 @@ const schema = z.object({
   correctAnswer: z.string().nullable().optional(),
   matchId: z.string().nullable().optional(),
   deadline: z.string().datetime().nullable().optional(),
+}).refine((d) => !!d.matchId || !!d.deadline, {
+  // Every question must lock automatically: either it is tied to a match
+  // (locks with the prediction) or it has an explicit deadline.
+  message: "Defina um jogo vinculado ou um prazo de encerramento.",
+  path: ["deadline"],
 });
 
 export async function POST(req: NextRequest) {
@@ -48,7 +53,8 @@ export async function POST(req: NextRequest) {
       options: dbOptions,
       correctAnswer: correctAnswer ?? null,
       matchId: matchId ?? null,
-      deadline: deadline ? new Date(deadline) : null,
+      // Match-linked questions derive their lock from the match, so no manual deadline.
+      deadline: matchId ? null : (deadline ? new Date(deadline) : null),
     },
     include: {
       match: { select: { homeTeamName: true, awayTeamName: true, kickoff: true } },

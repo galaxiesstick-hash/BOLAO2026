@@ -63,6 +63,8 @@ model User {
   password      String?
   phone         String?
   avatarUrl     String?   @map("avatar_url")
+  badge         String?
+  notificationPrefs Json?  @map("notification_prefs")
   role          UserRole  @default(PARTICIPANT)
   googleId      String?   @unique @map("google_id")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -78,8 +80,23 @@ model User {
   chatBan       ChatBan?
   accounts      Account[]
   sessions      Session[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // NextAuth required tables
@@ -230,6 +247,7 @@ model UserScore {
   userId         String   @unique @map("user_id")
   totalPoints    Int      @default(0) @map("total_points")
   overallRank    Int?     @map("overall_rank")
+  previousRank   Int?     @map("previous_rank")
   division       String?
   divisionRank   Int?     @map("division_rank")
   matchesBet     Int      @default(0) @map("matches_bet")
@@ -290,6 +308,22 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+model AchievementDefinition {
+  id           String  @id @default(cuid())
+  type         String  @unique
+  label        String
+  sub          String
+  level        Int     @default(1)
+  bonus        Int     @default(0)
+  criteriaKey  String  @map("criteria_key")
+  threshold    Int
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("achievement_definitions")
 }
 
 model UserAchievement {

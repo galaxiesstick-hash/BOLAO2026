@@ -7,33 +7,22 @@ export interface Division {
 }
 
 const DIVISION_NAMES = [
-  { name: "serie_a", displayName: "Série A - Profissionais" },
-  { name: "serie_b", displayName: "Série B - Semiprofissionais" },
-  { name: "serie_c", displayName: "Série C - Amadores" },
-  { name: "serie_d", displayName: "Série D - Juvenis" },
-  { name: "serie_e", displayName: "Série E - Lanternas" },
+  { name: "serie_a", displayName: "Ponto pra Cabrunco" },
+  { name: "serie_b", displayName: "Num faz mal a ninguém" },
+  { name: "serie_c", displayName: "Zona da Vergonha" },
 ];
+
+// The pool always runs with at most 3 series (A, B, C). Participants are split
+// among them strictly by ranking position, so anyone who gains/loses points
+// moves up or down a series automatically.
+const MAX_DIVISIONS = DIVISION_NAMES.length;
 
 export function calculateDivisions(totalParticipants: number): Division[] {
   if (totalParticipants <= 0) return [];
 
-  if (totalParticipants <= 7) {
-    return [
-      {
-        name: "serie_unica",
-        displayName: "Série Única",
-        size: totalParticipants,
-        startRank: 1,
-        endRank: totalParticipants,
-      },
-    ];
-  }
-
-  let numDivisions: number;
-  if (totalParticipants <= 14) numDivisions = 2;
-  else if (totalParticipants <= 23) numDivisions = 3;
-  else if (totalParticipants <= 49) numDivisions = 4;
-  else numDivisions = 5;
+  // Use as many series as possible up to 3 (fewer only when there are not even
+  // enough participants to fill A, B and C with one person each).
+  const numDivisions = Math.min(MAX_DIVISIONS, totalParticipants);
 
   const perDivision = Math.floor(totalParticipants / numDivisions);
   const remainder = totalParticipants % numDivisions;
@@ -58,12 +47,17 @@ export function calculateDivisions(totalParticipants: number): Division[] {
 export function getDivisionForRank(
   rank: number,
   totalParticipants: number
-): { name: string; displayName: string } {
+): { name: string; displayName: string; divisionRank: number } {
   const divisions = calculateDivisions(totalParticipants);
   const division = divisions.find(
     (d) => rank >= d.startRank && rank <= d.endRank
   );
-  return division ?? { name: "unknown", displayName: "Sem divisão" };
+  if (!division) return { name: "unknown", displayName: "Sem divisão", divisionRank: rank };
+  return {
+    name: division.name,
+    displayName: division.displayName,
+    divisionRank: rank - division.startRank + 1,
+  };
 }
 
 export function getDivisionDisplayName(name: string): string {

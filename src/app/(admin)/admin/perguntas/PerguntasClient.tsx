@@ -11,13 +11,86 @@ interface Question {
   correctAnswer: string | null;
   pointsValue: number;
   deadline: Date | string | null;
+  matchId: string | null;
   active: boolean;
   createdAt: Date;
   match: { homeTeamName: string; awayTeamName: string; kickoff: Date } | null;
   _count: { answers: number };
 }
 
+interface MatchOption {
+  id: string;
+  kickoff: Date | string;
+  homeTeamName: string;
+  homeTeamCode: string;
+  awayTeamName: string;
+  awayTeamCode: string;
+}
+
 type QuestionType = "MULTIPLE_CHOICE" | "YES_NO" | "FREE_TEXT" | "NUMBER";
+
+function matchLabel(m: MatchOption): string {
+  const when = new Date(m.kickoff).toLocaleDateString("pt-BR", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+  return `${m.homeTeamCode} × ${m.awayTeamCode} · ${when}`;
+}
+
+// Searchable match selector (type to filter) — replaces the long native dropdown.
+function MatchPicker({ matches, value, onChange, fallbackLabel }: {
+  matches: MatchOption[];
+  value: string;
+  onChange: (id: string) => void;
+  fallbackLabel?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = matches.find((m) => m.id === value);
+  const selectedLabel = selected ? matchLabel(selected) : value ? (fallbackLabel ?? "Jogo vinculado") : "";
+
+  if (value) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: "rgba(42,57,141,0.18)", border: "1px solid rgba(77,98,201,0.45)" }}>
+        <span style={{ fontSize: 13, color: "#8a9bff", fontWeight: 700, flex: 1 }}>⚽ {selectedLabel}</span>
+        <button type="button" onClick={() => { onChange(""); setQuery(""); }} style={{ background: "none", border: "none", color: "#8a9bff", cursor: "pointer", fontSize: 16, lineHeight: 1 }} aria-label="Remover jogo">×</button>
+      </div>
+    );
+  }
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? matches.filter((m) => matchLabel(m).toLowerCase().includes(q) || `${m.homeTeamName} ${m.awayTeamName}`.toLowerCase().includes(q))
+    : matches;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Digite para buscar um jogo…"
+        style={inputStyle}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 220, overflowY: "auto", background: "#15263f", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: "rgba(231,238,250,0.5)" }}>Nenhum jogo encontrado</div>
+          ) : filtered.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(m.id); setQuery(""); setOpen(false); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,0.05)", color: "#f3f6fb", fontSize: 13, cursor: "pointer" }}
+            >
+              {matchLabel(m)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TYPE_LABELS: Record<QuestionType, string> = {
   MULTIPLE_CHOICE: "Múltipla escolha",
@@ -26,7 +99,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   NUMBER: "Número",
 };
 
-export default function PerguntasClient({ questions: initial }: { questions: Question[] }) {
+export default function PerguntasClient({ questions: initial, matches }: { questions: Question[]; matches: MatchOption[] }) {
   const [questions, setQuestions] = useState(initial);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -37,12 +110,17 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
     options: "",
     correctAnswer: "",
     deadline: "",
+    matchId: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCreate() {
     if (!form.text.trim()) return;
+    if (!form.matchId && !form.deadline) {
+      setError("Defina um jogo vinculado ou um prazo de encerramento.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -57,14 +135,15 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
             ? form.options.split("\n").map(s => s.trim()).filter(Boolean)
             : form.type === "YES_NO" ? ["Sim", "Não"] : null,
           correctAnswer: form.correctAnswer || null,
-          deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+          matchId: form.matchId || null,
+          deadline: form.matchId ? null : (form.deadline ? new Date(form.deadline).toISOString() : null),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Erro");
       const created = await res.json();
       setQuestions(qs => [created, ...qs]);
       setShowForm(false);
-      setForm({ text: "", type: "YES_NO", pointsValue: "3", options: "", correctAnswer: "", deadline: "" });
+      setForm({ text: "", type: "YES_NO", pointsValue: "3", options: "", correctAnswer: "", deadline: "", matchId: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
@@ -84,11 +163,16 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
       deadline: q.deadline
         ? new Date(q.deadline).toISOString().slice(0, 16)
         : "",
+      matchId: q.matchId ?? "",
     });
   }
 
   async function handleEdit() {
     if (!editingId || !form.text.trim()) return;
+    if (!form.matchId && !form.deadline) {
+      setError("Defina um jogo vinculado ou um prazo de encerramento.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -102,7 +186,8 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
             ? form.options.split("\n").map(s => s.trim()).filter(Boolean)
             : form.type === "YES_NO" ? ["Sim", "Não"] : null,
           correctAnswer: form.correctAnswer || null,
-          deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+          matchId: form.matchId || null,
+          deadline: form.matchId ? null : (form.deadline ? new Date(form.deadline).toISOString() : null),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Erro");
@@ -181,7 +266,7 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
                 style={inputStyle}
               >
                 {(Object.keys(TYPE_LABELS) as QuestionType[]).map(t => (
-                  <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+                  <option key={t} value={t} style={optionStyle}>{TYPE_LABELS[t]}</option>
                 ))}
               </select>
             </div>
@@ -199,17 +284,27 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
           </div>
 
           <div>
-            <label style={labelStyle}>Prazo para resposta (opcional)</label>
-            <input
-              type="datetime-local"
-              value={form.deadline}
-              onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
-              style={{ ...inputStyle, colorScheme: "dark" }}
-            />
+            <label style={labelStyle}>Vincular a um jogo (opcional)</label>
+            <MatchPicker matches={matches} value={form.matchId} onChange={(id) => setForm(f => ({ ...f, matchId: id }))} />
             <p style={{ fontSize: 10.5, color: "rgba(231,238,250,0.38)", marginTop: 4 }}>
-              Após esta data/hora a pergunta ficará bloqueada para respostas
+              Com jogo vinculado, a pergunta bloqueia junto com o palpite (10 min antes do início).
             </p>
           </div>
+
+          {!form.matchId && (
+            <div>
+              <label style={labelStyle}>Prazo para resposta *</label>
+              <input
+                type="datetime-local"
+                value={form.deadline}
+                onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
+                style={{ ...inputStyle, colorScheme: "dark" }}
+              />
+              <p style={{ fontSize: 10.5, color: "rgba(231,238,250,0.38)", marginTop: 4 }}>
+                Obrigatório quando não há jogo vinculado. Após esta data/hora a pergunta fica bloqueada.
+              </p>
+            </div>
+          )}
 
           {form.type === "MULTIPLE_CHOICE" && (
             <div>
@@ -280,8 +375,15 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
                     <span style={tagStyle("#2A398D")}>{TYPE_LABELS[q.type as QuestionType] ?? q.type}</span>
                     <span style={tagStyle("#C9A84C")}>{q.pointsValue} pts</span>
                     <span style={tagStyle("rgba(231,238,250,0.3)")}>{q._count.answers} respostas</span>
-                    {q.deadline && (() => {
-                      const dl = new Date(q.deadline);
+                    {q.match && (
+                      <span style={tagStyle("#2A398D")}>⚽ {q.match.homeTeamName} × {q.match.awayTeamName}</span>
+                    )}
+                    {(() => {
+                      // Match-linked questions lock 10 min before kickoff; others use their deadline.
+                      const dl = q.match
+                        ? new Date(new Date(q.match.kickoff).getTime() - 10 * 60 * 1000)
+                        : q.deadline ? new Date(q.deadline) : null;
+                      if (!dl) return null;
                       const locked = dl < new Date();
                       return (
                         <span style={tagStyle(locked ? "#E61D25" : "#3CAC3B")}>
@@ -339,18 +441,30 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
                       style={{ ...inputStyle, resize: "vertical" as const }}
                     />
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Pontos</label>
+                    <input
+                      type="number" min="1" max="20"
+                      value={form.pointsValue}
+                      onChange={e => setForm(f => ({ ...f, pointsValue: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Vincular a um jogo (opcional)</label>
+                    <MatchPicker
+                      matches={matches}
+                      value={form.matchId}
+                      onChange={(id) => setForm(f => ({ ...f, matchId: id }))}
+                      fallbackLabel={q.match ? `${q.match.homeTeamName} × ${q.match.awayTeamName}` : undefined}
+                    />
+                    <p style={{ fontSize: 10.5, color: "rgba(231,238,250,0.38)", marginTop: 4 }}>
+                      Com jogo, bloqueia junto com o palpite (10 min antes do início).
+                    </p>
+                  </div>
+                  {!form.matchId && (
                     <div>
-                      <label style={labelStyle}>Pontos</label>
-                      <input
-                        type="number" min="1" max="20"
-                        value={form.pointsValue}
-                        onChange={e => setForm(f => ({ ...f, pointsValue: e.target.value }))}
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Prazo (opcional)</label>
+                      <label style={labelStyle}>Prazo *</label>
                       <input
                         type="datetime-local"
                         value={form.deadline}
@@ -358,7 +472,7 @@ export default function PerguntasClient({ questions: initial }: { questions: Que
                         style={{ ...inputStyle, colorScheme: "dark" }}
                       />
                     </div>
-                  </div>
+                  )}
                   {(q.type === "MULTIPLE_CHOICE") && (
                     <div>
                       <label style={labelStyle}>Opções (uma por linha)</label>
@@ -455,6 +569,10 @@ const inputStyle: React.CSSProperties = {
   color: "#fff", fontSize: 13, outline: "none",
   fontFamily: "var(--font-inter, sans-serif)",
 };
+
+// Native <option> elements default to a white background; force the dark theme
+// so the dropdown list is readable (otherwise it renders white text on white).
+const optionStyle: React.CSSProperties = { background: "#15263f", color: "#fff" };
 
 function tagStyle(color: string): React.CSSProperties {
   return {

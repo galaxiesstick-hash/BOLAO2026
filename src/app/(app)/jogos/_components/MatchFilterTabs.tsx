@@ -26,6 +26,7 @@ type ApiMatch = {
   minute: string | null;
   odds: { homeWin: number; draw: number; awayWin: number } | null;
   prediction: Prediction | null;
+  question: { count: number; answered: number } | null;
 };
 
 type ApiQuestion = {
@@ -86,6 +87,28 @@ function StatusPill({ kind }: { kind: string }) {
     <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, background: s.bg, border: `1px solid ${s.bd}`, fontSize: 9.5, fontWeight: 700, color: s.fg, letterSpacing: 0.6 }}>
       {s.dot && <span style={{ width: 5, height: 5, borderRadius: 99, background: s.fg, animation: "pulse 1.5s infinite" }} />}
       {s.label}
+    </div>
+  );
+}
+
+// ─── Search box ────────────────────────────────────────────────────────────────
+
+function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: "#0f1d33", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <circle cx="11" cy="11" r="7" stroke="rgba(231,238,250,0.38)" strokeWidth="1.8" />
+        <path d="M20 20l-3-3" stroke="rgba(231,238,250,0.38)" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 12.5, color: value ? "#f3f6fb" : "rgba(231,238,250,0.5)" }}
+      />
+      {value && (
+        <button onClick={() => onChange("")} style={{ background: "none", border: "none", color: "rgba(231,238,250,0.4)", cursor: "pointer", fontSize: 16, lineHeight: 1 }} aria-label="Limpar busca">×</button>
+      )}
     </div>
   );
 }
@@ -244,22 +267,39 @@ function MatchCard({ match, expanded, onExpand, onSaved }: {
           ) : locked ? (
             <Link href={`/jogos/${match.id}#bolao`} style={{ textDecoration: "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", borderRadius: 10, background: "rgba(42,57,141,0.18)", border: "1px solid rgba(42,57,141,0.4)", fontSize: 11, fontWeight: 700, color: "#8a9bff" }}>
-                👥 Bolão
+                👥 Detalhes
               </div>
             </Link>
           ) : (
-            <button
-              onClick={handleExpand}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer",
-                background: expanded ? "rgba(255,255,255,0.06)" : pred ? "rgba(60,172,59,0.15)" : "rgba(201,168,76,0.18)",
-                color: expanded ? "rgba(231,238,250,0.62)" : pred ? "#3CAC3B" : "#C9A84C",
-                fontSize: 11.5, fontWeight: 700, letterSpacing: 0.3,
-              }}
-            >
-              {expanded ? <>✕ Fechar</> : pred ? <>✎ Editar</> : <>⚽ Palpitar</>}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {match.question && match.question.count > 0 && (
+                <Link href={`/jogos/${match.id}#perguntas`} style={{ textDecoration: "none" }}>
+                  <div
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      padding: "7px 11px", borderRadius: 10,
+                      background: "rgba(42,57,141,0.2)", border: "1px solid rgba(77,98,201,0.45)",
+                      color: "#8a9bff", fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+                    }}
+                    title={match.question.answered >= match.question.count ? "Editar resposta da pergunta" : "Responder pergunta do jogo"}
+                  >
+                    ❓ {match.question.answered >= match.question.count ? "Editar pergunta" : "Responder pergunta"}
+                  </div>
+                </Link>
+              )}
+              <button
+                onClick={handleExpand}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "7px 13px", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: expanded ? "rgba(255,255,255,0.06)" : pred ? "rgba(60,172,59,0.15)" : "rgba(201,168,76,0.18)",
+                  color: expanded ? "rgba(231,238,250,0.62)" : pred ? "#3CAC3B" : "#C9A84C",
+                  fontSize: 11.5, fontWeight: 700, letterSpacing: 0.3,
+                }}
+              >
+                {expanded ? <>✕ Fechar</> : pred ? <>✎ Editar</> : <>⚽ Palpitar</>}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -275,6 +315,27 @@ function MatchCard({ match, expanded, onExpand, onSaved }: {
             {/* Away stepper */}
             <Stepper value={away} onChange={setAway} label={match.awayTeam.name} flag={match.awayTeam.flag} reverse />
           </div>
+
+          {/* Probabilities (odds) — same view shown after the match locks */}
+          {match.odds && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 9.5, color: "rgba(231,238,250,0.38)", fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>
+                PROBABILIDADES (ODDS)
+              </div>
+              <div style={{ display: "flex", gap: 2, borderRadius: 6, overflow: "hidden" }}>
+                {[
+                  { label: match.homeTeam.code, v: match.odds.homeWin, color: "#E61D25" },
+                  { label: "EMP", v: match.odds.draw, color: "#C9A84C" },
+                  { label: match.awayTeam.code, v: match.odds.awayWin, color: "#4d62c9" },
+                ].map((s) => (
+                  <div key={s.label} style={{ flex: `${s.v} 0 0`, minWidth: 0, background: `${s.color}22`, height: 34, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: 9, color: s.color, fontWeight: 700 }}>
+                    <span>{Math.round(s.v)}%</span>
+                    <span style={{ opacity: 0.7 }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Points mini-table */}
           {match.odds && (() => {
@@ -471,12 +532,16 @@ function PerguntaCard({ question, onAnswer }: { question: ApiQuestion; onAnswer:
 // ─── Main component ───────────────────────────────────────────────────────────
 
 type MainTab = "jogos" | "perguntas";
-type FilterTab = "all" | "live" | "today" | MatchPhase;
+type FilterTab = "all" | "live" | "today" | "finished" | MatchPhase;
+type QuestFilter = "all" | "today" | "week";
 
 export default function MatchFilterTabs() {
   const [mainTab, setMainTab] = useState<MainTab>("jogos");
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [questFilter, setQuestFilter] = useState<QuestFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [matchSearch, setMatchSearch] = useState("");
+  const [questionSearch, setQuestionSearch] = useState("");
 
   const { data: matches, isLoading: matchLoading, mutate: mutateMatches } =
     useSWR<ApiMatch[]>("/api/jogos", fetcher, { refreshInterval: 30_000 });
@@ -486,43 +551,84 @@ export default function MatchFilterTabs() {
 
   const allMatches = matches ?? [];
 
+  const activeMatches = allMatches.filter((m) => m.status !== "FINISHED");
+  const finishedCount = allMatches.filter((m) => m.status === "FINISHED").length;
   const liveCount = allMatches.filter((m) => m.status === "LIVE").length;
   const todayCount = useMemo(() => {
     const nowBR = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    return allMatches.filter((m) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(m.kickoff)) === nowBR).length;
+    return allMatches.filter((m) => m.status !== "FINISHED" && new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(m.kickoff)) === nowBR).length;
   }, [allMatches]);
 
   const phases = useMemo(() => {
     const seen = new Set<MatchPhase>();
     const out: MatchPhase[] = [];
-    for (const m of allMatches) { if (!seen.has(m.phase)) { seen.add(m.phase); out.push(m.phase); } }
+    for (const m of activeMatches) { if (!seen.has(m.phase)) { seen.add(m.phase); out.push(m.phase); } }
     return out;
-  }, [allMatches]);
+  }, [activeMatches]);
 
   const filterTabs = useMemo(() => {
-    const tabs: { id: FilterTab; label: string; count: number; live?: boolean }[] = [
-      { id: "all", label: "Todos", count: allMatches.length },
+    const tabs: { id: FilterTab; label: string; count: number; live?: boolean; dim?: boolean }[] = [
+      { id: "all", label: "Todos", count: activeMatches.length },
+      // Finalizados kept among the first tabs for quick access
+      ...(finishedCount > 0 ? [{ id: "finished" as FilterTab, label: "Finalizados", count: finishedCount, dim: true }] : []),
       ...(liveCount > 0 ? [{ id: "live" as FilterTab, label: "Ao vivo", count: liveCount, live: true }] : []),
       ...(todayCount > 0 ? [{ id: "today" as FilterTab, label: "Hoje", count: todayCount }] : []),
-      ...phases.map((p) => ({ id: p as FilterTab, label: PHASE_LABELS[p], count: allMatches.filter((m) => m.phase === p).length })),
+      ...phases.filter((p) => activeMatches.some((m) => m.phase === p)).map((p) => ({ id: p as FilterTab, label: PHASE_LABELS[p], count: activeMatches.filter((m) => m.phase === p).length })),
     ];
     return tabs;
-  }, [allMatches, liveCount, todayCount, phases]);
+  }, [activeMatches, allMatches, liveCount, todayCount, phases, finishedCount]);
 
   const filtered = useMemo(() => {
     const nowBR = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     switch (filterTab) {
-      case "all": return allMatches;
-      case "live": return allMatches.filter((m) => m.status === "LIVE");
-      case "today": return allMatches.filter((m) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(m.kickoff)) === nowBR);
-      default: return allMatches.filter((m) => m.phase === filterTab);
+      case "all":      return activeMatches;
+      case "live":     return allMatches.filter((m) => m.status === "LIVE");
+      case "today":    return activeMatches.filter((m) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(m.kickoff)) === nowBR);
+      // Finished: most recently finished first (latest kickoff at the top)
+      case "finished": return allMatches
+        .filter((m) => m.status === "FINISHED")
+        .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+      default:         return activeMatches.filter((m) => m.phase === filterTab);
     }
-  }, [allMatches, filterTab]);
+  }, [activeMatches, allMatches, filterTab]);
 
-  const dateGroups = useMemo(() => groupByDate(filtered), [filtered]);
+  // Free-text search overrides the tab filter so any match is found without scrolling
+  const searchedMatches = useMemo(() => {
+    const q = matchSearch.trim().toLowerCase();
+    if (!q) return filtered;
+    return allMatches.filter((m) =>
+      `${m.homeTeam.name} ${m.homeTeam.code} ${m.awayTeam.name} ${m.awayTeam.code}`.toLowerCase().includes(q)
+    );
+  }, [filtered, allMatches, matchSearch]);
+
+  const dateGroups = useMemo(() => groupByDate(searchedMatches), [searchedMatches]);
 
   const allQuestions = questions ?? [];
   const answeredCount = allQuestions.filter((q) => q.answers.length > 0).length;
+
+  const sortedQuestions = useMemo(() => {
+    return [...allQuestions].sort((a, b) => {
+      if (!a.deadline && !b.deadline) return 0;
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    });
+  }, [allQuestions]);
+
+  const filteredQuestions = useMemo(() => {
+    let base = sortedQuestions;
+    const q = questionSearch.trim().toLowerCase();
+    if (q) base = base.filter((qq) => qq.text.toLowerCase().includes(q));
+    if (questFilter === "all") return base;
+    const now = new Date();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return base.filter((qq) => {
+      if (!qq.deadline) return false;
+      const d = new Date(qq.deadline);
+      return questFilter === "today" ? d <= todayEnd : d <= weekEnd;
+    });
+  }, [sortedQuestions, questFilter, questionSearch]);
 
   const handleExpand = useCallback((id: string) => {
     setExpandedId((prev) => prev === id ? null : id);
@@ -576,7 +682,7 @@ export default function MatchFilterTabs() {
             {filterTabs.map((f) => {
               const active = f.id === filterTab;
               return (
-                <button key={f.id} onClick={() => setFilterTab(f.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 13px", borderRadius: 999, border: active ? "none" : f.live ? "1px solid rgba(230,29,37,0.33)" : "1px solid rgba(255,255,255,0.07)", background: active ? "#3CAC3B" : f.live ? "rgba(230,29,37,0.12)" : "#0f1d33", color: active ? "#fff" : f.live ? "#E61D25" : "rgba(231,238,250,0.62)", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: active ? "0 4px 14px -4px rgba(60,172,59,0.5)" : "none", whiteSpace: "nowrap" }}>
+                <button key={f.id} onClick={() => setFilterTab(f.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 13px", borderRadius: 999, border: active ? "none" : f.live ? "1px solid rgba(230,29,37,0.33)" : f.dim ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(255,255,255,0.07)", background: active ? (f.dim ? "rgba(255,255,255,0.12)" : "#3CAC3B") : f.live ? "rgba(230,29,37,0.12)" : "#0f1d33", color: active ? "#fff" : f.live ? "#E61D25" : f.dim ? "rgba(231,238,250,0.38)" : "rgba(231,238,250,0.62)", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: active && !f.dim ? "0 4px 14px -4px rgba(60,172,59,0.5)" : "none", whiteSpace: "nowrap" }}>
                   {f.live && <span style={{ width: 6, height: 6, borderRadius: 99, background: "#E61D25", animation: "pulse 1.5s infinite" }} />}
                   {f.label}
                   <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--font-mono, monospace)", padding: "1px 6px", borderRadius: 99, background: active ? "rgba(255,255,255,0.22)" : f.live ? "rgba(230,29,37,0.2)" : "rgba(255,255,255,0.06)" }}>
@@ -587,6 +693,11 @@ export default function MatchFilterTabs() {
             })}
           </div>
         </div>
+      )}
+
+      {/* Search (jogos) */}
+      {mainTab === "jogos" && (
+        <SearchBox value={matchSearch} onChange={setMatchSearch} placeholder="Buscar time ou jogo…" />
       )}
 
       {/* Content */}
@@ -601,7 +712,26 @@ export default function MatchFilterTabs() {
           <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(231,238,250,0.38)", fontSize: 13 }}>Nenhuma pergunta disponível.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {allQuestions.map((q) => <PerguntaCard key={q.id} question={q} onAnswer={handleAnswer} />)}
+            {/* Search (perguntas) */}
+            <SearchBox value={questionSearch} onChange={setQuestionSearch} placeholder="Buscar pergunta…" />
+            {/* Filtros de prazo */}
+            <div style={{ display: "flex", gap: 8 }}>
+              {([
+                { id: "all" as QuestFilter, label: "Todas" },
+                { id: "today" as QuestFilter, label: "Vencendo hoje" },
+                { id: "week" as QuestFilter, label: "Vencendo na semana" },
+              ]).map((f) => {
+                const active = questFilter === f.id;
+                return (
+                  <button key={f.id} onClick={() => setQuestFilter(f.id)} style={{ padding: "7px 12px", borderRadius: 999, border: active ? "none" : "1px solid rgba(255,255,255,0.1)", background: active ? "#C9A84C" : "#0f1d33", color: active ? "#0a1628" : "rgba(231,238,250,0.62)", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            {filteredQuestions.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "rgba(231,238,250,0.38)", fontSize: 13 }}>Nenhuma pergunta neste filtro.</div>
+            ) : filteredQuestions.map((q) => <PerguntaCard key={q.id} question={q} onAnswer={handleAnswer} />)}
           </div>
         )
       ) : dateGroups.length === 0 ? (

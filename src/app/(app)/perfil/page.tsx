@@ -1,8 +1,10 @@
-import { auth } from "@/lib/auth";
+import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { getInitials } from "@/lib/utils";
+import { getLivePointsByUser, getAccuracyBreakdown } from "@/lib/ranking";
+import AccuracyBreakdownCard from "@/components/AccuracyBreakdownCard";
 
 export const dynamic = "force-dynamic";
 
@@ -187,7 +189,8 @@ export default async function PerfilPage() {
 
   const userId = session.user.id;
 
-  const [userScore, predictionCount, recentPredictions, finishedPredictions, dbAchievements] = await Promise.all([
+  const [dbUser, userScore, predictionCount, recentPredictions, finishedPredictions, dbAchievements] = await Promise.all([
+    db.user.findUnique({ where: { id: userId }, select: { name: true, email: true, avatarUrl: true, badge: true } }),
     db.userScore.findUnique({ where: { userId } }),
     db.prediction.count({ where: { userId } }),
     db.prediction.findMany({
@@ -226,13 +229,23 @@ export default async function PerfilPage() {
     }),
   ]);
 
-  const totalPoints = userScore?.totalPoints ?? 0;
+  const displayName = dbUser?.name ?? session.user.name ?? "Participante";
+  const displayEmail = dbUser?.email ?? session.user.email ?? "";
+  const displayAvatar = dbUser?.avatarUrl ?? null;
+  const displayBadge = dbUser?.badge ?? null;
+
+  const accuracyBreakdown = await getAccuracyBreakdown(userId);
+  const livePoints = (await getLivePointsByUser()).get(userId) ?? 0;
+  const totalPoints = (userScore?.totalPoints ?? 0) + livePoints;
   const overallRank = userScore?.overallRank ?? null;
   const exactScores = userScore?.exactScores ?? 0;
   const correctWinners = userScore?.correctWinners ?? 0;
 
-  const pct = predictionCount > 0
-    ? Math.round(((exactScores + correctWinners) / predictionCount) * 100)
+  // Aproveitamento considera apenas palpites de jogos já finalizados
+  // (jogos futuros ainda sem resultado não entram na conta).
+  const finishedBetCount = finishedPredictions.length;
+  const pct = finishedBetCount > 0
+    ? Math.round((correctWinners / finishedBetCount) * 100)
     : 0;
 
   // ─── Compute achievement progress metrics ────────────────────
@@ -241,8 +254,13 @@ export default async function PerfilPage() {
     const m = pred.match;
     if (m.homeGoals === null || m.awayGoals === null) continue;
     const pts = pred.totalPoints ?? 0;
-    if (pts > 0) {
-      curStreak++; maxStreak = Math.max(maxStreak, curStreak); matchesWithPoints++;
+    // A meio-acerto (+1, winner wrong) is NOT a hit — it breaks the streak.
+    const realWinner = m.homeGoals > m.awayGoals ? "home" : m.homeGoals < m.awayGoals ? "away" : "draw";
+    const predWinner = pred.homeGoals > pred.awayGoals ? "home" : pred.homeGoals < pred.awayGoals ? "away" : "draw";
+    const isHit = pts > 0 && realWinner === predWinner;
+    if (pts > 0) matchesWithPoints++;
+    if (isHit) {
+      curStreak++; maxStreak = Math.max(maxStreak, curStreak);
       const realHomeWin = m.homeGoals > m.awayGoals;
       const realAwayWin = m.homeGoals < m.awayGoals;
       const hp = m.homeWinProb ? Number(m.homeWinProb) : 34;
@@ -264,6 +282,22 @@ export default async function PerfilPage() {
         <span className="font-display leading-none tracking-wide" style={{ fontSize: 24, color: "#f3f6fb", letterSpacing: 0.6 }}>
           PERFIL
         </span>
+        <div className="flex items-center gap-2">
+        <Link href="/perfil/editar">
+          <div
+            style={{
+              height: 34, padding: "0 12px", borderRadius: 11,
+              background: "#15263f", border: "1px solid rgba(255,255,255,0.07)",
+              display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(231,238,250,0.62)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(231,238,250,0.62)" }}>EDITAR</span>
+          </div>
+        </Link>
         <Link href="/configuracoes">
           <div
             style={{
@@ -278,6 +312,7 @@ export default async function PerfilPage() {
             </svg>
           </div>
         </Link>
+        </div>
       </div>
 
       {/* Profile hero */}
@@ -317,12 +352,12 @@ export default async function PerfilPage() {
                     overflow: "hidden",
                   }}
                 >
-                  {session.user.avatarUrl ? (
+                  {displayAvatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={session.user.avatarUrl} alt={session.user.name ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={displayAvatar} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     <span className="font-display" style={{ fontSize: 28, color: "#0a1628" }}>
-                      {getInitials(session.user.name ?? "U")}
+                      {getInitials(displayName)}
                     </span>
                   )}
                 </div>
@@ -349,11 +384,11 @@ export default async function PerfilPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold" style={{ fontSize: 18, color: "#f3f6fb", letterSpacing: -0.2 }}>
-                {session.user.name ?? "Participante"}
+                {displayName}
               </span>
             </div>
             <div className="font-mono" style={{ fontSize: 11.5, color: "rgba(231,238,250,0.62)", marginTop: 2 }}>
-              {session.user.email}
+              {displayEmail}
             </div>
 
             <div
@@ -379,7 +414,7 @@ export default async function PerfilPage() {
           style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
         >
           {[
-            { v: String(totalPoints), l: "pontos", c: "#C9A84C" },
+            { v: String(totalPoints), l: livePoints > 0 ? `pontos · +${livePoints} ao vivo` : "pontos", c: "#C9A84C" },
             { v: overallRank ? `#${overallRank}` : "–", l: "ranking", c: "#f3f6fb" },
             { v: `${pct}%`, l: "aproveitamento", c: "#3CAC3B" },
           ].map((s, i) => (
@@ -394,6 +429,28 @@ export default async function PerfilPage() {
           ))}
         </div>
       </div>
+
+      {/* Champion badge banner */}
+      {displayBadge && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "12px 16px", borderRadius: 16,
+            background: "linear-gradient(135deg, rgba(201,168,76,0.22) 0%, rgba(201,168,76,0.06) 100%)",
+            border: "1px solid rgba(201,168,76,0.5)",
+          }}
+        >
+          <div style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>👑</div>
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(201,168,76,0.7)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 3 }}>
+              Título Especial
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#C9A84C", lineHeight: 1.3 }}>
+              {displayBadge}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats cards */}
       <div className="grid grid-cols-3 gap-2">
@@ -412,6 +469,9 @@ export default async function PerfilPage() {
           </div>
         ))}
       </div>
+
+      {/* Accuracy breakdown by type */}
+      <AccuracyBreakdownCard counts={accuracyBreakdown} />
 
       {/* Achievements */}
       <section>
@@ -462,12 +522,16 @@ export default async function PerfilPage() {
                 (match.homeGoals! < match.awayGoals! && pred.homeGoals < pred.awayGoals) ||
                 (match.homeGoals === match.awayGoals && pred.homeGoals === pred.awayGoals)
               );
-              const outcome = exact ? "cravou" : correct ? "acertou" : isFinished ? "errou" : "pendente";
+              // Meio-acerto: scored (+1) but with the wrong winner. Not an acerto.
+              const halfHit = isFinished && !exact && !correct && (pred.totalPoints ?? 0) > 0;
+              const outcome = exact ? "cravou" : correct ? "acertou" : halfHit ? "meio" : isFinished ? "errou" : "pendente";
               const outMap = {
-                cravou: { color: "#C9A84C", label: "CRAVOU", icon: "★" },
-                acertou: { color: "#3CAC3B", label: "ACERTOU", icon: "✓" },
-                errou: { color: "rgba(231,238,250,0.38)", label: "ERROU", icon: "✗" },
-                pendente: { color: "#4d62c9", label: "PENDENTE", icon: "·" },
+                cravou:   { color: "#C9A84C", ptsColor: "#C9A84C", label: "CRAVOU", icon: "★" },
+                acertou:  { color: "#3CAC3B", ptsColor: "#3CAC3B", label: "ACERTOU", icon: "✓" },
+                // Status stays gray (like "errou") but the +1 is shown in green.
+                meio:     { color: "rgba(231,238,250,0.45)", ptsColor: "#3CAC3B", label: "ESMOLA", icon: "½" },
+                errou:    { color: "rgba(231,238,250,0.38)", ptsColor: "rgba(231,238,250,0.38)", label: "ERROU", icon: "✗" },
+                pendente: { color: "#4d62c9", ptsColor: "#4d62c9", label: "PENDENTE", icon: "·" },
               };
               const s = outMap[outcome];
 
@@ -502,7 +566,7 @@ export default async function PerfilPage() {
                       {s.icon} {s.label}
                     </div>
                     {pred.totalPoints != null && (
-                      <div className="font-mono font-bold" style={{ fontSize: 12, color: s.color }}>
+                      <div className="font-mono font-bold" style={{ fontSize: 12, color: s.ptsColor }}>
                         {pred.totalPoints > 0 ? `+${pred.totalPoints}` : "0"} pts
                       </div>
                     )}
@@ -562,6 +626,25 @@ export default async function PerfilPage() {
           </div>
         </Link>
       </div>
+
+      {/* Logout */}
+      <form
+        action={async () => {
+          "use server";
+          await signOut({ redirectTo: "/login" });
+        }}
+      >
+        <button
+          type="submit"
+          style={{
+            width: "100%", padding: "13px 0", borderRadius: 14, border: "1px solid rgba(230,29,37,0.3)",
+            background: "rgba(230,29,37,0.08)", color: "#E61D25",
+            fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: 0.3,
+          }}
+        >
+          Sair do bolão
+        </button>
+      </form>
     </div>
   );
 }

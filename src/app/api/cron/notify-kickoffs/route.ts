@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { sendKickoffReminderEmail } from "@/lib/email";
+import { sendPredictionsDigestForMatch } from "@/lib/predictionsDigest";
+import { parsePrefs, pushRespectingQuiet } from "@/lib/notify";
 import { getFlagUrl } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
@@ -28,10 +30,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (upcomingMatches.length === 0) {
-      return Response.json({ sent: 0, skipped: 0, reason: "no_matches_in_window" });
-    }
-
     let sent = 0;
     let skipped = 0;
 
@@ -51,6 +49,7 @@ export async function POST(req: NextRequest) {
           id: true,
           name: true,
           email: true,
+          notificationPrefs: true,
         },
       });
 
@@ -64,6 +63,28 @@ export async function POST(req: NextRequest) {
       const awayFlag = getFlagUrl(match.awayTeamFlag, 80);
 
       for (const user of approvedUsers) {
+        const prefs = parsePrefs(user.notificationPrefs);
+        if (!prefs.kickoff) continue; // participante desativou o lembrete de jogos
+
+        // Dedup record first, so a flaky email/push doesn't trigger repeated sends
+        await db.notification.create({
+          data: {
+            userId: user.id,
+            title: `Palpite pendente: ${match.homeTeamCode} × ${match.awayTeamCode}`,
+            message: `30 minutos para fechar! Faça seu palpite antes de ${kickoffStr}.`,
+            type: notifType,
+          },
+        }).catch(() => {});
+
+        // Push to the phone (respects "não perturbe")
+        await pushRespectingQuiet(user.id, {
+          title: `⏱ 30 min — ${match.homeTeamCode} × ${match.awayTeamCode}`,
+          body: `Faça seu palpite antes de ${kickoffStr}!`,
+          url: `/jogos/${match.id}`,
+          tag: notifType,
+        }, prefs).catch(() => {});
+
+        // E-mail
         try {
           await sendKickoffReminderEmail({
             to: user.email,
@@ -75,17 +96,6 @@ export async function POST(req: NextRequest) {
             kickoffStr,
             matchId: match.id,
           });
-
-          // Record notification to avoid resending
-          await db.notification.create({
-            data: {
-              userId: user.id,
-              title: `Palpite pendente: ${match.homeTeamCode} × ${match.awayTeamCode}`,
-              message: `30 minutos para fechar! Faça seu palpite antes de ${kickoffStr}.`,
-              type: notifType,
-            },
-          });
-
           sent++;
         } catch {
           // Don't let one email failure block others
@@ -94,7 +104,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return Response.json({ sent, skipped, matchesChecked: upcomingMatches.length });
+    // ── Predictions digest: 1 min AFTER the lock (~9 min before kickoff), e-mail
+    //    everyone's predictions for the match to all participants. Once per match.
+    let digestsSent = 0;
+    const lockStart = new Date(now.getTime() + 8 * 60 * 1000);  // 8 min from now
+    const lockEnd = new Date(now.getTime() + 9 * 60 * 1000);    // 9 min from now (1 min after the 10-min lock)
+    const lockingMatches = await db.match.findMany({
+      where: { status: "SCHEDULED", kickoff: { gte: lockStart, lte: lockEnd } },
+      select: { id: true },
+    });
+    for (const m of lockingMatches) {
+      const already = await db.syncLog.findFirst({ where: { type: "palpites_digest", source: m.id } });
+      if (already) continue;
+      // Mark first so a re-run within the window doesn't double-send.
+      await db.syncLog.create({ data: { type: "palpites_digest", status: "sent", source: m.id } }).catch(() => {});
+      try {
+        const r = await sendPredictionsDigestForMatch(m.id);
+        digestsSent += r.sent;
+      } catch (e) {
+        console.error("[notify-kickoffs] digest failed for", m.id, e);
+      }
+    }
+
+    return Response.json({ sent, skipped, digestsSent, matchesChecked: upcomingMatches.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });

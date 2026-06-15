@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { LampMark, LampLogo } from "@/components/ui/LampMark";
+import { LampLogo } from "@/components/ui/LampMark";
 import ShareButton from "@/components/ShareButton";
 import { db } from "@/lib/db";
 
@@ -143,7 +143,7 @@ export default async function LandingPage() {
   const now = new Date();
   const daysLeft = Math.max(0, Math.ceil((opening.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
-  // Real participant count — approved payments from PARTICIPANT users only (excludes admin)
+  // Participants actually in the pool (approved payment) — "já participando"
   const participantCount = await db.payment.count({
     where: { status: "APPROVED", user: { role: "PARTICIPANT" } },
   });
@@ -223,8 +223,16 @@ export default async function LandingPage() {
             </span>
           </div>
 
-          {/* Title */}
-          <div style={{ marginTop: 18 }}>
+          {/* Logo + Title */}
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo_icone.png"
+              alt="Bolão Lamparão"
+              width={89}
+              height={100}
+              style={{ objectFit: "contain", marginBottom: 12 }}
+            />
             <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 48, color: T.text, lineHeight: 0.9, letterSpacing: 1.4 }}>BOLÃO</div>
             <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 48, color: T.gold, lineHeight: 0.9, letterSpacing: 1.4 }}>LAMPARÃO</div>
             <div style={{
@@ -292,7 +300,7 @@ export default async function LandingPage() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: T.text, fontWeight: 700 }}>
                 <span style={{ color: T.gold, fontFamily: "var(--font-mono, monospace)" }}>{participantCount}</span>{" "}
-                lamparão{participantCount !== 1 ? "es" : ""} já {participantCount !== 1 ? "entraram" : "entrou"}
+                lampar{participantCount !== 1 ? "ões já estão" : "ão já está"} participando
               </div>
               <div style={{ fontSize: 10, color: T.faint, marginTop: 1 }}>Inscrições fecham antes do jogo de abertura</div>
             </div>
@@ -366,8 +374,8 @@ export default async function LandingPage() {
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: T.text, letterSpacing: 0.4 }}>TODO O POTE</div>
-                    <div style={{ fontSize: 9, color: T.muted }}>menos os R$31 do vice</div>
+                    <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: T.text, letterSpacing: 0.4 }}>80% DO POTE</div>
+                    <div style={{ fontSize: 9, color: T.muted }}>do total arrecadado</div>
                   </div>
                 </div>
                 {/* 2nd */}
@@ -384,7 +392,7 @@ export default async function LandingPage() {
                       <div style={{ fontSize: 10, color: T.muted }}>O vice-lamparão</div>
                     </div>
                   </div>
-                  <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: "#dcdcef", letterSpacing: 0.4 }}>R$ 31,00</div>
+                  <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 18, color: "#dcdcef", letterSpacing: 0.4 }}>20% DO POTE</div>
                 </div>
                 {/* 3rd */}
                 <div style={{
@@ -400,7 +408,7 @@ export default async function LandingPage() {
                       <div style={{ fontSize: 10, color: T.muted }}>O menos pior</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, color: "#b08855", fontWeight: 700 }}>1 pote de chuvisco 🍺</div>
+                  <div style={{ fontSize: 13, color: "#b08855", fontWeight: 700 }}>1 pote de chuvisco</div>
                 </div>
               </div>
               <div style={{ marginTop: 12, fontSize: 10.5, color: T.muted, lineHeight: 1.4 }}>
@@ -444,7 +452,8 @@ export default async function LandingPage() {
         {/* ── Footer ── */}
         <div style={{ padding: "28px 20px 48px", textAlign: "center" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <LampMark size={16} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo_icone.png" alt="" width={14} height={16} style={{ objectFit: "contain" }} />
             <span style={{ fontSize: 10, color: T.faint, fontFamily: "var(--font-mono, monospace)", letterSpacing: 0.5 }}>
               BOLÃO LAMPARÃO · CAMPOS/RJ · v2.0
             </span>

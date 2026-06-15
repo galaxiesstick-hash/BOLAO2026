@@ -85,7 +85,7 @@ export default async function AdminPagamentosPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
         <div className="glass-card p-3 text-center border border-amber-500/20">
           <p className="text-2xl font-bold text-amber-400">{payments.pending.length}</p>
           <p className="text-xs text-slate-400">Pendentes</p>

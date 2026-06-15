@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import {
+  syncFromWorldCup26,
   syncMatchResults,
   syncMatchResultsFromApiFootball,
   syncNewMatches,
@@ -14,18 +15,28 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // PRIMARY live source: worldcup26.ir. Falls back to football-data if it's
+    // unreachable (manual admin override is the third safety layer).
+    let primary: Awaited<ReturnType<typeof syncFromWorldCup26>>;
+    let liveSource = "worldcup26";
+    try {
+      primary = await syncFromWorldCup26();
+    } catch (e) {
+      console.error("[sync-matches] worldcup26 failed, falling back to football-data:", e);
+      liveSource = "football-data(fallback)";
+      primary = await syncMatchResults();
+    }
+
     const [
-      { updated, finishedMatchIds },
       { updated: afUpdated, finishedMatchIds: afFinished },
       { created, updated: knockoutUpdated },
     ] = await Promise.all([
-      syncMatchResults(),
       syncMatchResultsFromApiFootball(),
       syncNewMatches(),
     ]);
 
-    const allFinished = [...finishedMatchIds, ...afFinished];
-    const totalUpdated = updated + afUpdated;
+    const allFinished = [...primary.finishedMatchIds, ...afFinished];
+    const totalUpdated = primary.updated + afUpdated;
 
     let calculated = 0;
     if (allFinished.length > 0) {
@@ -37,14 +48,15 @@ export async function POST(req: NextRequest) {
       data: {
         type: "matches",
         status: "success",
-        source: "football-data.org+api-football",
+        source: liveSource,
         matchesAffected: totalUpdated,
-        details: { finishedMatchIds: allFinished, calculatedPredictions: calculated, newMatchesCreated: created, knockoutUpdated, afUpdated },
+        details: { liveSource, finishedMatchIds: allFinished, calculatedPredictions: calculated, newMatchesCreated: created, knockoutUpdated, afUpdated },
       },
     });
 
     return Response.json({
       success: true,
+      liveSource,
       updated: totalUpdated,
       newMatchesCreated: created,
       knockoutUpdated,

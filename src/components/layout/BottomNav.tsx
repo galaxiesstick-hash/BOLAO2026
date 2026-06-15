@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Início", icon: "home" },
   { href: "/jogos", label: "Jogos", icon: "cup" },
+  { href: "/perguntas", label: "Perguntas", icon: "question" },
   { href: "/ranking", label: "Ranking", icon: "chart" },
   { href: "/perfil", label: "Perfil", icon: "user" },
 ];
@@ -41,6 +41,14 @@ function NavIcon({ name, color }: { name: string; color: string }) {
           <circle cx="12" cy="12" r="1.6" fill={color} />
         </svg>
       );
+    case "question":
+      return (
+        <svg width="22" height="22" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" fill="none" />
+          <path stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.6-2.4 2-2.4 3.5" />
+          <circle cx="12" cy="17" r="0.8" fill={color} />
+        </svg>
+      );
     case "chart":
       return (
         <svg width="22" height="22" viewBox="0 0 24 24">
@@ -57,6 +65,31 @@ function NavIcon({ name, color }: { name: string; color: string }) {
     default:
       return null;
   }
+}
+
+// Rendered inside <Link>: useLinkStatus lets the tapped item light up
+// instantly (pending) — before the next page finishes loading.
+function NavItemContent({ label, icon, isActive }: { label: string; icon: string; isActive: boolean }) {
+  const { pending } = useLinkStatus();
+  const active = isActive || pending;
+  const color = active ? "#3CAC3B" : "rgba(231,238,250,0.38)";
+  return (
+    <>
+      {active && (
+        <span
+          className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full"
+          style={{ background: "#3CAC3B", boxShadow: "0 0 12px rgba(60,172,59,0.7)" }}
+        />
+      )}
+      <NavIcon name={icon} color={color} />
+      <span
+        className="text-[9.5px] font-semibold tracking-wide"
+        style={{ color, fontFamily: "var(--font-inter, Inter, system-ui)" }}
+      >
+        {label}
+      </span>
+    </>
+  );
 }
 
 export default function BottomNav() {
@@ -76,26 +109,14 @@ export default function BottomNav() {
         <div className="flex items-center justify-around px-2">
           {NAV_ITEMS.map(({ href, label, icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
-            const color = isActive ? "#3CAC3B" : "rgba(231,238,250,0.38)";
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl relative"
+                prefetch
+                className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl relative transition-transform duration-100 active:scale-90"
               >
-                {isActive && (
-                  <span
-                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full"
-                    style={{ background: "#3CAC3B", boxShadow: "0 0 12px rgba(60,172,59,0.7)" }}
-                  />
-                )}
-                <NavIcon name={icon} color={color} />
-                <span
-                  className="text-[10.5px] font-semibold tracking-wide"
-                  style={{ color, fontFamily: "var(--font-inter, Inter, system-ui)" }}
-                >
-                  {label}
-                </span>
+                <NavItemContent label={label} icon={icon} isActive={isActive} />
               </Link>
             );
           })}

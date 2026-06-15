@@ -12,29 +12,45 @@ const patchSchema = z.object({
   text: z.string().min(1).optional(),
   pointsValue: z.number().int().min(1).max(20).optional(),
   deadline: z.string().nullable().optional(),
+  matchId: z.string().nullable().optional(),
   options: z.array(z.string()).nullable().optional(),
 });
 
 /** Recalculates user_scores for a set of userIds from scratch. */
 async function recalculateUserScores(userIds: string[]): Promise<void> {
   for (const userId of userIds) {
-    const predAgg = await db.prediction.aggregate({
-      where: { userId, totalPoints: { not: null } },
-      _sum: { totalPoints: true },
-      _count: { id: true },
-    });
-    const answerAgg = await db.answer.aggregate({
-      where: { userId, points: { not: null } },
-      _sum: { points: true },
-    });
+    const [predAgg, answerAgg, achievementAgg] = await Promise.all([
+      db.prediction.aggregate({
+        where: { userId, totalPoints: { not: null } },
+        _sum: { totalPoints: true },
+        _count: { id: true },
+      }),
+      db.answer.aggregate({
+        where: { userId, points: { not: null } },
+        _sum: { points: true },
+      }),
+      db.userAchievement.aggregate({
+        where: { userId },
+        _sum: { pointsBonus: true },
+      }),
+    ]);
     const exactScores = await db.prediction.count({
-      where: { userId, breakdown: { path: ["accuracyType"], equals: "EXACT" } },
+      where: { userId, breakdown: { path: ["accuracyType"], equals: "EXACT" }, match: { status: "FINISHED" } },
     });
+    // "Acertos" never count an ESMOLA (ONE_SCORE_ONLY): +1 pt but wrong winner.
     const correctWinners = await db.prediction.count({
-      where: { userId, totalPoints: { gt: 0 } },
+      where: {
+        userId,
+        totalPoints: { gt: 0 },
+        match: { status: "FINISHED" },
+        NOT: { breakdown: { path: ["accuracyType"], equals: "ONE_SCORE_ONLY" } },
+      },
     });
     const matchesBet = await db.prediction.count({ where: { userId } });
-    const totalPoints = (predAgg._sum.totalPoints ?? 0) + (answerAgg._sum.points ?? 0);
+    const totalPoints =
+      (predAgg._sum.totalPoints ?? 0) +
+      (answerAgg._sum.points ?? 0) +
+      (achievementAgg._sum.pointsBonus ?? 0);
 
     await db.userScore.upsert({
       where: { userId },
@@ -64,7 +80,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Dados inválidos" }, { status: 422 });
   }
 
-  const { correctAnswer, active, text, pointsValue, deadline, options } = parsed.data;
+  const { correctAnswer, active, text, pointsValue, deadline, matchId, options } = parsed.data;
+
+  // Compute the resulting lock state to enforce: every question must lock
+  // automatically — either tied to a match or with an explicit deadline.
+  const existing = await db.question.findUnique({
+    where: { id },
+    select: { matchId: true, deadline: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Pergunta não encontrada" }, { status: 404 });
+  }
+  const finalMatchId = matchId !== undefined ? matchId : existing.matchId;
+  // A match-linked question derives its lock from the match (no manual deadline).
+  const finalDeadline = finalMatchId
+    ? null
+    : deadline !== undefined
+      ? (deadline ? new Date(deadline) : null)
+      : existing.deadline;
+
+  if (!finalMatchId && !finalDeadline) {
+    return NextResponse.json(
+      { error: "Defina um jogo vinculado ou um prazo de encerramento." },
+      { status: 422 },
+    );
+  }
 
   const question = await db.question.update({
     where: { id },
@@ -72,7 +112,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(active !== undefined && { active }),
       ...(text !== undefined && { text }),
       ...(pointsValue !== undefined && { pointsValue }),
-      ...(deadline !== undefined && { deadline: deadline ? new Date(deadline) : null }),
+      ...(matchId !== undefined && { matchId }),
+      ...((matchId !== undefined || deadline !== undefined) && { deadline: finalDeadline }),
       ...(options !== undefined && { options: options ?? undefined }),
       ...(correctAnswer !== undefined && { correctAnswer }),
     },

@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 
-type ToggleRowProps = {
+export type NotifPrefs = { kickoff: boolean; results: boolean; ranking: boolean; quietHours: boolean };
+
+function ToggleRow({ icon, iconBg, label, hint, on, onChange, busy, last }: {
   icon: React.ReactNode;
   iconBg: string;
   label: string;
   hint?: string;
-  defaultOn: boolean;
+  on: boolean;
+  onChange: (v: boolean) => void;
+  busy?: boolean;
   last?: boolean;
-};
-
-function ToggleRow({ icon, iconBg, label, hint, defaultOn, last }: ToggleRowProps) {
-  const [on, setOn] = useState(defaultOn);
+}) {
   return (
     <div
       style={{
@@ -34,13 +35,14 @@ function ToggleRow({ icon, iconBg, label, hint, defaultOn, last }: ToggleRowProp
         {hint && <div style={{ fontSize: 10.5, color: "rgba(231,238,250,0.38)", marginTop: 2 }}>{hint}</div>}
       </div>
       <button
-        onClick={() => setOn((v) => !v)}
+        onClick={() => !busy && onChange(!on)}
+        disabled={busy}
         style={{
-          width: 40, height: 24, borderRadius: 99, border: "none", cursor: "pointer",
+          width: 40, height: 24, borderRadius: 99, border: "none", cursor: busy ? "default" : "pointer",
           background: on ? "#3CAC3B" : "rgba(255,255,255,0.1)",
           position: "relative", transition: "all .2s",
           boxShadow: on ? "0 0 12px rgba(60,172,59,0.55)" : "none",
-          flexShrink: 0,
+          flexShrink: 0, opacity: busy ? 0.6 : 1,
         }}
       >
         <div
@@ -57,7 +59,28 @@ function ToggleRow({ icon, iconBg, label, hint, defaultOn, last }: ToggleRowProp
   );
 }
 
-export default function NotificationToggles() {
+export default function NotificationToggles({ initial }: { initial: NotifPrefs }) {
+  const [prefs, setPrefs] = useState<NotifPrefs>(initial);
+  const [busyKey, setBusyKey] = useState<keyof NotifPrefs | null>(null);
+
+  async function update(key: keyof NotifPrefs, value: boolean) {
+    const prev = prefs[key];
+    setPrefs((p) => ({ ...p, [key]: value }));
+    setBusyKey(key);
+    try {
+      const res = await fetch("/api/user/notification-prefs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setPrefs((p) => ({ ...p, [key]: prev })); // revert on failure
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   const bell = (color: string) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <path d="M6 8a6 6 0 0 1 12 0v5l1.5 3h-15L6 13V8z" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
@@ -74,11 +97,6 @@ export default function NotificationToggles() {
       <path d="M4 20h16M7 16V9M12 16V5M17 16v-4" stroke={color} strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
-  const mega = (color: string) => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M3 11v2a1 1 0 0 0 1 1h2l8 5V5L6 10H4a1 1 0 0 0-1 1z" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
   const moon = (color: string) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
@@ -87,11 +105,10 @@ export default function NotificationToggles() {
 
   return (
     <>
-      <ToggleRow icon={bell("#E61D25")} iconBg="#E61D25" label="Próximos jogos" hint="30 min antes" defaultOn />
-      <ToggleRow icon={trophy("#C9A84C")} iconBg="#C9A84C" label="Resultados de palpites" defaultOn />
-      <ToggleRow icon={chart("#3CAC3B")} iconBg="#3CAC3B" label="Mudanças no ranking" hint="Só quando subir/cair 3+" defaultOn />
-      <ToggleRow icon={mega("#4d62c9")} iconBg="#4d62c9" label="Avisos do organizador" defaultOn />
-      <ToggleRow icon={moon("#5d6f88")} iconBg="#5d6f88" label="Não perturbe" hint="22:00 – 07:00" defaultOn={false} last />
+      <ToggleRow icon={bell("#E61D25")} iconBg="#E61D25" label="Próximos jogos" hint="Lembrete 30 min antes" on={prefs.kickoff} onChange={(v) => update("kickoff", v)} busy={busyKey === "kickoff"} />
+      <ToggleRow icon={trophy("#C9A84C")} iconBg="#C9A84C" label="Resultados de palpites" hint="Quando o jogo termina" on={prefs.results} onChange={(v) => update("results", v)} busy={busyKey === "results"} />
+      <ToggleRow icon={chart("#3CAC3B")} iconBg="#3CAC3B" label="Mudanças no ranking" hint="Quando você sobe/cai 3+ posições" on={prefs.ranking} onChange={(v) => update("ranking", v)} busy={busyKey === "ranking"} />
+      <ToggleRow icon={moon("#5d6f88")} iconBg="#5d6f88" label="Não perturbe" hint="Sem push das 22:00 às 07:00" on={prefs.quietHours} onChange={(v) => update("quietHours", v)} busy={busyKey === "quietHours"} last />
     </>
   );
 }

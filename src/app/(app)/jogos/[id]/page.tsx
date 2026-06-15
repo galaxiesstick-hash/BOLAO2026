@@ -22,7 +22,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [match, prediction, config] = await Promise.all([
+  const [match, prediction, config, questionCount] = await Promise.all([
     db.match.findUnique({
       where: { id },
       select: {
@@ -44,6 +44,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
       select: { homeGoals: true, awayGoals: true, totalPoints: true, breakdown: true },
     }),
     db.poolConfig.findFirst({ select: { lockMinutesBefore: true } }),
+    db.question.count({ where: { matchId: id, active: true } }),
   ]);
 
   if (!match) notFound();
@@ -240,6 +241,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         drawProb={drawProb}
         awayProb={awayProb}
         accuracyType={(prediction?.breakdown as { accuracyType?: string } | null)?.accuracyType ?? null}
+        questionCount={questionCount}
       />
 
       {/* Distribution (after lock) */}

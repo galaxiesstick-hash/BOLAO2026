@@ -11,13 +11,25 @@ export default async function AdminPerguntasPage() {
     redirect("/dashboard");
   }
 
-  const questions = await db.question.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      match: { select: { homeTeamName: true, awayTeamName: true, kickoff: true } },
-      _count: { select: { answers: true } },
-    },
-  });
+  const [questions, matches] = await Promise.all([
+    db.question.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        match: { select: { homeTeamName: true, awayTeamName: true, kickoff: true } },
+        _count: { select: { answers: true } },
+      },
+    }),
+    // Matches still open for predictions — eligible to receive a linked question
+    db.match.findMany({
+      where: { status: "SCHEDULED" },
+      orderBy: { kickoff: "asc" },
+      select: {
+        id: true, kickoff: true,
+        homeTeamName: true, homeTeamCode: true,
+        awayTeamName: true, awayTeamCode: true,
+      },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -27,7 +39,7 @@ export default async function AdminPerguntasPage() {
           Crie e gerencie perguntas para pontuação extra
         </p>
       </div>
-      <PerguntasClient questions={questions} />
+      <PerguntasClient questions={questions} matches={matches} />
     </div>
   );
 }

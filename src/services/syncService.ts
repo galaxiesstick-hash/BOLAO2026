@@ -15,6 +15,8 @@ import {
   mapApiFootballStatus,
   parseApiFootballId,
 } from "@/lib/apiFootball";
+import { fetchWc26Games } from "@/lib/worldcup26";
+import { notifyUser, pushRespectingQuiet } from "@/lib/notify";
 
 const FLAG = (code: string) => (code ? `https://flagcdn.com/w80/${code}.png` : "");
 
@@ -115,14 +117,16 @@ export async function syncMatchResults(): Promise<SyncResult> {
   }
 
   const now = new Date();
-  const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  // Poll from 2h before kickoff until ~6h after, so a late FINISHED flip is always
+  // caught and a match never gets stuck as LIVE.
+  const windowStart = new Date(now.getTime() - 6 * 60 * 60 * 1000);
   const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
   const relevantMatches = await db.match.findMany({
     where: {
       externalId: { not: null },
       status: { in: ["LIVE", "SCHEDULED"] },
-      kickoff: { gte: threeHoursAgo, lte: twoHoursAhead },
+      kickoff: { gte: windowStart, lte: twoHoursAhead },
     },
   });
 
@@ -134,8 +138,12 @@ export async function syncMatchResults(): Promise<SyncResult> {
     fetchMatchesByDate(today),
   ]);
 
+  // Live data MUST win: a match in progress appears in BOTH endpoints, but the
+  // date endpoint still reports it as TIMED. Spread todayMatches first so the
+  // live (IN_PLAY/PAUSED) entry overwrites it — otherwise a LIVE match gets
+  // reverted to SCHEDULED on every sync.
   const externalById = new Map<string, (typeof liveMatches)[0]>();
-  for (const m of [...liveMatches, ...todayMatches]) {
+  for (const m of [...todayMatches, ...liveMatches]) {
     externalById.set(String(m.id), m);
   }
 
@@ -147,6 +155,12 @@ export async function syncMatchResults(): Promise<SyncResult> {
     const external = externalById.get(match.externalId);
     if (!external) continue;
 
+    // Never move a kicked-off match backwards on flaky/stale feed data: the
+    // football-data date endpoint can still report an in-progress match as TIMED
+    // (and with null goals). A LIVE match only advances to FINISHED — ignore any
+    // "not started" reading so it doesn't bounce LIVE→SCHEDULED and wipe the score.
+    if (match.status === "LIVE" && mapStatus(external.status) === "SCHEDULED") continue;
+
     const newStatus = mapStatus(external.status);
     const newHomeGoals = external.score.fullTime.home;
     const newAwayGoals = external.score.fullTime.away;
@@ -155,7 +169,8 @@ export async function syncMatchResults(): Promise<SyncResult> {
     const changed =
       match.status !== newStatus ||
       match.homeGoals !== newHomeGoals ||
-      match.awayGoals !== newAwayGoals;
+      match.awayGoals !== newAwayGoals ||
+      match.minute !== newMinute;
 
     if (!changed) continue;
 
@@ -182,20 +197,102 @@ export async function syncMatchResults(): Promise<SyncResult> {
 }
 
 /**
+ * PRIMARY live sync via worldcup26.ir. Joins our fixtures to the feed by team
+ * codes (handling home/away orientation) and applies the same guards as the
+ * football-data path: never revert a LIVE match to SCHEDULED on flaky data;
+ * update score/status; flag a →FINISHED transition for final scoring. Already
+ * FINISHED matches are out of scope (status filter), so they're never touched.
+ * Throws if the source is unreachable — the cron then falls back.
+ */
+export async function syncFromWorldCup26(): Promise<SyncResult> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+  const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+  const relevantMatches = await db.match.findMany({
+    where: {
+      status: { in: ["LIVE", "SCHEDULED"] },
+      kickoff: { gte: windowStart, lte: twoHoursAhead },
+    },
+  });
+  if (relevantMatches.length === 0) return { updated: 0, finishedMatchIds: [] };
+
+  const games = await fetchWc26Games(); // throws → caller handles fallback
+  const byPair = new Map<string, (typeof games)[number]>();
+  for (const g of games) {
+    if (g.homeCode && g.awayCode) byPair.set(`${g.homeCode}_${g.awayCode}`, g);
+  }
+
+  let updated = 0;
+  const finishedMatchIds: string[] = [];
+
+  for (const match of relevantMatches) {
+    let g = byPair.get(`${match.homeTeamCode}_${match.awayTeamCode}`);
+    let swap = false;
+    if (!g) {
+      g = byPair.get(`${match.awayTeamCode}_${match.homeTeamCode}`);
+      swap = true; // feed has home/away inverted for this fixture
+    }
+    if (!g) continue;
+
+    let newStatus = g.status;
+    const newHome = swap ? g.awayScore : g.homeScore;
+    const newAway = swap ? g.homeScore : g.awayScore;
+
+    // ── Sanity guards against bad feed data (the community feed sometimes flags
+    //    future / just-started games as finished 0-0) ──
+    const nowMs = now.getTime();
+    const kickMs = match.kickoff.getTime();
+    // 1) A match can't be LIVE/FINISHED before it kicks off (2-min grace).
+    if ((newStatus === "LIVE" || newStatus === "FINISHED") && kickMs > nowMs + 2 * 60 * 1000) {
+      continue;
+    }
+    // 2) Don't FINISH a match that never went LIVE until it realistically could be
+    //    over (~80 min after kickoff). A just-kicked-off game is treated as LIVE.
+    if (newStatus === "FINISHED" && match.status !== "LIVE" && kickMs > nowMs - 80 * 60 * 1000) {
+      newStatus = "LIVE";
+    }
+    // 3) Never move a kicked-off match backwards on flaky data.
+    if (match.status === "LIVE" && newStatus === "SCHEDULED") continue;
+
+    const changed =
+      match.status !== newStatus ||
+      match.homeGoals !== newHome ||
+      match.awayGoals !== newAway;
+    if (!changed) continue;
+
+    await db.match.update({
+      where: { id: match.id },
+      data: { status: newStatus, homeGoals: newHome, awayGoals: newAway },
+    });
+    updated++;
+
+    if (match.status !== "FINISHED" && newStatus === "FINISHED") {
+      finishedMatchIds.push(match.id);
+    }
+  }
+
+  return { updated, finishedMatchIds };
+}
+
+/**
  * Syncs match results for fixtures tracked via api-football (externalId = "af:<id>").
  * Covers friendlies and competitions not on football-data.org.
  */
 export async function syncMatchResultsFromApiFootball(): Promise<SyncResult> {
-  // Only query when there are af:-tracked matches active (e.g. during friendlies or after Copa)
+  // Only query when there are af:-tracked matches active (e.g. during friendlies or after Copa).
+  // Tight window to protect the free api-football quota (100 req/day): start ~15 min
+  // before kickoff and stop ~3h after. Trade-off: if the API flags "FT" late (common on
+  // minor friendlies) the match may stay LIVE — finalize it manually in Admin → Jogos.
   const now = new Date();
-  const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-  const twoHoursAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const windowStart = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const fifteenMinAhead = new Date(now.getTime() + 15 * 60 * 1000);
 
   const relevantMatches = await db.match.findMany({
     where: {
       externalId: { startsWith: "af:" },
       status: { in: ["LIVE", "SCHEDULED"] },
-      kickoff: { gte: threeHoursAgo, lte: twoHoursAhead },
+      kickoff: { gte: windowStart, lte: fifteenMinAhead },
     },
   });
 
@@ -227,7 +324,8 @@ export async function syncMatchResultsFromApiFootball(): Promise<SyncResult> {
     const changed =
       match.status !== newStatus ||
       match.homeGoals !== newHomeGoals ||
-      match.awayGoals !== newAwayGoals;
+      match.awayGoals !== newAwayGoals ||
+      match.minute !== newMinute;
 
     if (!changed) continue;
 
@@ -252,9 +350,12 @@ export interface PointsResult {
 export async function triggerPointsCalculation(matchIds: string[]): Promise<PointsResult> {
   if (matchIds.length === 0) return { calculated: 0 };
 
-  // Process both FINISHED (final) and LIVE (provisional) matches
+  // Only FINISHED matches persist points. LIVE (provisional) points are computed
+  // on the fly by getLivePointsByUser — persisting them here would double-count
+  // with the live ranking. (Passing a LIVE id still recomputes the affected
+  // users' scores below, so un-finishing a match correctly drops its points.)
   const matches = await db.match.findMany({
-    where: { id: { in: matchIds }, status: { in: ["LIVE", "FINISHED"] } },
+    where: { id: { in: matchIds }, status: "FINISHED" },
   });
 
   let calculated = 0;
@@ -304,42 +405,71 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
     })
     .then((rows) => rows.map((r) => r.userId));
 
-  for (const userId of affectedUserIds) {
-    const agg = await db.prediction.aggregate({
-      where: { userId, totalPoints: { not: null } },
-      _sum: { totalPoints: true, basePoints: true, bonusPoints: true },
-      _count: { id: true },
-    });
+  // Snapshot ranks before recalc, to detect 3+ position moves afterwards.
+  const oldRankRows = await db.userScore.findMany({
+    where: { userId: { in: affectedUserIds } },
+    select: { userId: true, overallRank: true },
+  });
+  const oldRankMap = new Map(oldRankRows.map((r) => [r.userId, r.overallRank]));
 
-    // EXACT predictions
+  for (const userId of affectedUserIds) {
+    const [agg, answerAgg, achievementAgg] = await Promise.all([
+      db.prediction.aggregate({
+        // Only FINISHED matches count toward the stored total — live/provisional
+        // points are added on the fly in the ranking, never persisted here.
+        where: { userId, totalPoints: { not: null }, match: { status: "FINISHED" } },
+        _sum: { totalPoints: true, basePoints: true, bonusPoints: true },
+        _count: { id: true },
+      }),
+      db.answer.aggregate({
+        where: { userId, points: { not: null } },
+        _sum: { points: true },
+      }),
+      db.userAchievement.aggregate({
+        where: { userId },
+        _sum: { pointsBonus: true },
+      }),
+    ]);
+
+    // Only count FINISHED matches for stats — live scores can still change
     const exactScores = await db.prediction.count({
       where: {
         userId,
         breakdown: { path: ["accuracyType"], equals: "EXACT" },
+        match: { status: "FINISHED" },
       },
     });
 
-    // EXACT + ALMOST_EXACT + WINNER_ONLY count as "correct winner"
+    // "Acertos" = predictions that scored AND got the winner right.
+    // A meio-acerto (ONE_SCORE_ONLY) scores +1 but with the WRONG winner, so it
+    // must NOT count as an acerto.
     const correctWinners = await db.prediction.count({
       where: {
         userId,
         totalPoints: { gt: 0 },
+        match: { status: "FINISHED" },
+        NOT: { breakdown: { path: ["accuracyType"], equals: "ONE_SCORE_ONLY" } },
       },
     });
 
     const matchesBet = await db.prediction.count({ where: { userId } });
 
+    const totalPoints =
+      (agg._sum.totalPoints ?? 0) +
+      (answerAgg._sum.points ?? 0) +
+      (achievementAgg._sum.pointsBonus ?? 0);
+
     await db.userScore.upsert({
       where: { userId },
       create: {
         userId,
-        totalPoints: agg._sum.totalPoints ?? 0,
+        totalPoints,
         exactScores,
         correctWinners,
         matchesBet,
       },
       update: {
-        totalPoints: agg._sum.totalPoints ?? 0,
+        totalPoints,
         exactScores,
         correctWinners,
         matchesBet,
@@ -350,13 +480,81 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
   // Recalculate overall rank for PARTICIPANT users only (admins excluded)
   await recalculateRanking();
 
-  // Check and grant achievements for affected users (may add bonus points)
-  for (const userId of affectedUserIds) {
-    await checkAndGrantAchievements(userId);
+  // Achievements are only granted after a match is definitively FINISHED —
+  // never during live updates, so scores can't flip and leave stale bonuses.
+  const finishedMatchIds = matches
+    .filter((m) => m.status === "FINISHED")
+    .map((m) => m.id);
+
+  if (finishedMatchIds.length > 0) {
+    const finishedAffectedUserIds = await db.prediction
+      .findMany({
+        where: { matchId: { in: finishedMatchIds } },
+        select: { userId: true },
+        distinct: ["userId"],
+      })
+      .then((rows) => rows.map((r) => r.userId));
+
+    for (const userId of finishedAffectedUserIds) {
+      await checkAndGrantAchievements(userId);
+    }
+
+    // Recalculate ranking again to account for any achievement bonus points
+    await recalculateRanking();
   }
 
-  // Recalculate ranking again to account for any achievement bonus points
-  await recalculateRanking();
+  // ── Notifications for FINISHED matches: result of each prediction + 3+ ranking moves ──
+  if (finishedMatchIds.length > 0) {
+    const newRankRows = await db.userScore.findMany({
+      where: { userId: { in: affectedUserIds } },
+      select: { userId: true, overallRank: true },
+    });
+    const newRankMap = new Map(newRankRows.map((r) => [r.userId, r.overallRank]));
+
+    for (const m of matches) {
+      if (m.status !== "FINISHED" || m.homeGoals === null || m.awayGoals === null) continue;
+      // Dedup: users who already got the result for this match
+      const already = await db.notification.findMany({
+        where: { type: `match_result:${m.id}` },
+        select: { userId: true },
+      });
+      const alreadySet = new Set(already.map((a) => a.userId));
+      const preds = await db.prediction.findMany({
+        where: { matchId: m.id },
+        select: { userId: true, totalPoints: true },
+      });
+      for (const p of preds) {
+        if (alreadySet.has(p.userId)) continue;
+        const pts = p.totalPoints ?? 0;
+        await notifyUser(p.userId, {
+          prefKey: "results",
+          type: `match_result:${m.id}`,
+          title: `Resultado: ${m.homeTeamCode} ${m.homeGoals}×${m.awayGoals} ${m.awayTeamCode}`,
+          message: pts > 0 ? `Você fez +${pts} pts neste jogo! 🎯` : "Não pontuou dessa vez. Bola pra frente! ⚽",
+          url: `/jogos/${m.id}`,
+        });
+      }
+    }
+
+    // Ranking moves of 3+ positions (one notification per finish event)
+    const evtTag = finishedMatchIds.join("_");
+    for (const userId of affectedUserIds) {
+      const oldR = oldRankMap.get(userId);
+      const newR = newRankMap.get(userId) ?? null;
+      if (oldR == null || newR == null) continue;
+      const delta = oldR - newR; // > 0 = subiu (posição menor é melhor)
+      if (Math.abs(delta) < 3) continue;
+      await notifyUser(userId, {
+        prefKey: "ranking",
+        type: `rank_change:${evtTag}`,
+        title: delta > 0 ? "📈 Você subiu no ranking!" : "📉 Você caiu no ranking",
+        message: delta > 0
+          ? `Subiu ${delta} posições — agora está em #${newR}.`
+          : `Caiu ${Math.abs(delta)} posições — agora está em #${newR}.`,
+        url: "/ranking",
+      });
+    }
+  }
 
   return { calculated };
 }
@@ -402,20 +600,6 @@ export async function syncOdds(): Promise<{
 
 // ─── Achievement metadata ─────────────────────────────────────────────────────
 
-const ACHIEVEMENT_DISPLAY: Record<string, { label: string; sub: string }> = {
-  CRAVADOR_I:           { label: "Cravador I",          sub: "1 placar exato" },
-  CRAVADOR_II:          { label: "Cravador II",         sub: "5 placares exatos" },
-  CRAVADOR_III:         { label: "Cravador III",        sub: "10 placares exatos" },
-  SEQUENCIA_QUENTE_I:   { label: "Em Chamas I",         sub: "3 acertos seguidos" },
-  SEQUENCIA_QUENTE_II:  { label: "Em Chamas II",        sub: "5 acertos seguidos" },
-  SEQUENCIA_QUENTE_III: { label: "Em Chamas III",       sub: "7 acertos seguidos" },
-  REI_DAS_ZEBRAS_I:     { label: "Rei das Zebras I",    sub: "1 vitória improvável" },
-  REI_DAS_ZEBRAS_II:    { label: "Rei das Zebras II",   sub: "3 vitórias improváveis" },
-  REI_DAS_ZEBRAS_III:   { label: "Rei das Zebras III",  sub: "5 vitórias improváveis" },
-  INVENCIVEL_I:         { label: "Invencível I",        sub: "10 jogos pontuados" },
-  INVENCIVEL_II:        { label: "Invencível II",       sub: "20 jogos pontuados" },
-  INVENCIVEL_III:       { label: "Invencível III",      sub: "30 jogos pontuados" },
-};
 
 /**
  * Checks and grants any newly earned achievements for a user.
@@ -423,17 +607,28 @@ const ACHIEVEMENT_DISPLAY: Record<string, { label: string; sub: string }> = {
  * Called after points are calculated so all data is fresh.
  */
 export async function checkAndGrantAchievements(userId: string): Promise<void> {
-  const [userScore, predictions] = await Promise.all([
+  const [userScore, predictions, allDefs, exactScoresCount] = await Promise.all([
     db.userScore.findUnique({ where: { userId } }),
     db.prediction.findMany({
       where: { userId, match: { status: "FINISHED" } },
       select: {
+        homeGoals: true,
+        awayGoals: true,
         totalPoints: true,
         match: {
           select: { homeGoals: true, awayGoals: true, homeWinProb: true, awayWinProb: true, kickoff: true },
         },
       },
       orderBy: { match: { kickoff: "asc" } },
+    }),
+    db.achievementDefinition.findMany({ where: { active: true } }),
+    // Count only FINISHED matches — live scores can flip, so never count them
+    db.prediction.count({
+      where: {
+        userId,
+        breakdown: { path: ["accuracyType"], equals: "EXACT" },
+        match: { status: "FINISHED" },
+      },
     }),
   ]);
 
@@ -450,12 +645,21 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
     if (m.homeGoals === null || m.awayGoals === null) continue;
 
     const pts = pred.totalPoints ?? 0;
-    if (pts > 0) {
+
+    // A meio-acerto (ONE_SCORE_ONLY) scores +1 but with the WRONG winner — it is
+    // NOT a hit, so it breaks the consecutive-hit streak.
+    const realWinner = m.homeGoals > m.awayGoals ? "home" : m.homeGoals < m.awayGoals ? "away" : "draw";
+    const predWinner = pred.homeGoals > pred.awayGoals ? "home" : pred.homeGoals < pred.awayGoals ? "away" : "draw";
+    const isHit = pts > 0 && realWinner === predWinner;
+
+    // "Jogos pontuados" (Invencível) still counts any scoring prediction.
+    if (pts > 0) matchesWithPoints++;
+
+    if (isHit) {
       curStreak++;
       maxStreak = Math.max(maxStreak, curStreak);
-      matchesWithPoints++;
 
-      // Zebra: underdog (prob < 15%) won and user predicted it correctly
+      // Zebra: underdog (prob < 15%) won and user predicted that winner correctly
       const realHomeWin = m.homeGoals > m.awayGoals;
       const realAwayWin = m.homeGoals < m.awayGoals;
       const homeProb = m.homeWinProb ? Number(m.homeWinProb) : 34;
@@ -467,20 +671,18 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
     }
   }
 
-  const criteria = [
-    { type: "CRAVADOR_I",           level: 1, bonus: 5,  met: userScore.exactScores >= 1  },
-    { type: "CRAVADOR_II",          level: 2, bonus: 10, met: userScore.exactScores >= 5  },
-    { type: "CRAVADOR_III",         level: 3, bonus: 20, met: userScore.exactScores >= 10 },
-    { type: "SEQUENCIA_QUENTE_I",   level: 1, bonus: 5,  met: maxStreak >= 3 },
-    { type: "SEQUENCIA_QUENTE_II",  level: 2, bonus: 10, met: maxStreak >= 5 },
-    { type: "SEQUENCIA_QUENTE_III", level: 3, bonus: 15, met: maxStreak >= 7 },
-    { type: "REI_DAS_ZEBRAS_I",     level: 1, bonus: 10, met: zebraWins >= 1 },
-    { type: "REI_DAS_ZEBRAS_II",    level: 2, bonus: 20, met: zebraWins >= 3 },
-    { type: "REI_DAS_ZEBRAS_III",   level: 3, bonus: 30, met: zebraWins >= 5 },
-    { type: "INVENCIVEL_I",         level: 1, bonus: 5,  met: matchesWithPoints >= 10 },
-    { type: "INVENCIVEL_II",        level: 2, bonus: 10, met: matchesWithPoints >= 20 },
-    { type: "INVENCIVEL_III",       level: 3, bonus: 20, met: matchesWithPoints >= 30 },
-  ];
+  const metricValue: Record<string, number> = {
+    exactScores: exactScoresCount, // direct count from predictions, not cached value
+    maxStreak,
+    zebraWins,
+    matchesWithPoints,
+  };
+
+  const criteria = allDefs.map((d) => ({
+    type: d.type, level: d.level, bonus: d.bonus,
+    label: d.label, sub: d.sub,
+    met: (metricValue[d.criteriaKey] ?? 0) >= d.threshold,
+  }));
 
   const existing = await db.userAchievement.findMany({
     where: { userId },
@@ -496,17 +698,22 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
       });
       totalBonusAdded += c.bonus;
 
-      const meta = ACHIEVEMENT_DISPLAY[c.type];
-      if (meta) {
-        await db.notification.create({
-          data: {
-            userId,
-            title: "Conquista desbloqueada!",
-            message: `${meta.label}: ${meta.sub} (+${c.bonus} pts bônus)`,
-            type: `achievement:${c.type}`,
-          },
-        });
-      }
+      await db.notification.create({
+        data: {
+          userId,
+          title: "Conquista desbloqueada!",
+          message: `${c.label}: ${c.sub} (+${c.bonus} pts bônus)`,
+          type: `achievement:${c.type}`,
+        },
+      });
+
+      // Push to the phone (respects "não perturbe"; no per-category toggle)
+      await pushRespectingQuiet(userId, {
+        title: "🏅 Conquista desbloqueada!",
+        body: `${c.label}: ${c.sub} (+${c.bonus} pts)`,
+        url: "/perfil",
+        tag: `achievement:${c.type}`,
+      }).catch(() => {});
     }
   }
 
@@ -530,7 +737,7 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
  *   6. user.name asc     (ordem alfabética — último recurso)
  */
 export async function recalculateRanking(): Promise<void> {
-  const [allScores, answerAgg] = await Promise.all([
+  const [allScores, answerAgg, achievementAgg] = await Promise.all([
     db.userScore.findMany({
       where: { user: { role: "PARTICIPANT" } },
       include: { user: { select: { id: true, name: true, createdAt: true } } },
@@ -540,15 +747,22 @@ export async function recalculateRanking(): Promise<void> {
       where: { points: { gt: 0 } },
       _sum: { points: true },
     }),
+    db.userAchievement.groupBy({
+      by: ["userId"],
+      where: { pointsBonus: { gt: 0 } },
+      _sum: { pointsBonus: true },
+    }),
   ]);
 
   const questionPtsMap = new Map(answerAgg.map(r => [r.userId, r._sum.points ?? 0]));
+  const achievementPtsMap = new Map(achievementAgg.map(r => [r.userId, r._sum.pointsBonus ?? 0]));
 
   allScores.sort((a, b) => {
     const aQpts = questionPtsMap.get(a.userId) ?? 0;
     const bQpts = questionPtsMap.get(b.userId) ?? 0;
-    const aMpts = a.totalPoints - aQpts;
-    const bMpts = b.totalPoints - bQpts;
+    // Match points exclude question + achievement bonuses, matching the ranking page.
+    const aMpts = Math.max(0, a.totalPoints - aQpts - (achievementPtsMap.get(a.userId) ?? 0));
+    const bMpts = Math.max(0, b.totalPoints - bQpts - (achievementPtsMap.get(b.userId) ?? 0));
 
     if (a.totalPoints !== b.totalPoints) return b.totalPoints - a.totalPoints; // 1. total
     if (aMpts !== bMpts)                 return bMpts - aMpts;                 // 2. match pts

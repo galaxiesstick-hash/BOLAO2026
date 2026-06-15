@@ -1,16 +1,27 @@
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { getInitials } from "@/lib/utils";
 import { LampMark } from "@/components/ui/LampMark";
 import Link from "next/link";
 import ConfigActions from "./ConfigActions";
 import NotificationToggles from "./NotificationToggles";
+import PushToggle from "@/components/PushToggle";
+import { parsePrefs } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfiguracoesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
+  // Avatar is read from the DB (never carried in the session token).
+  const dbUser = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { avatarUrl: true, image: true, notificationPrefs: true },
+  });
+  const avatarUrl = dbUser?.avatarUrl ?? dbUser?.image ?? null;
+  const notifPrefs = parsePrefs(dbUser?.notificationPrefs);
 
   return (
     <div className="space-y-4 pb-6">
@@ -51,9 +62,9 @@ export default async function ConfiguracoesPage() {
             overflow: "hidden", flexShrink: 0,
           }}
         >
-          {session.user.avatarUrl ? (
+          {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={session.user.avatarUrl} alt={session.user.name ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={avatarUrl} alt={session.user.name ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : (
             <span className="font-display" style={{ fontSize: 20, color: "#0a1628" }}>
               {getInitials(session.user.name ?? "U")}
@@ -66,7 +77,7 @@ export default async function ConfiguracoesPage() {
           </div>
           <div style={{ fontSize: 11, color: "rgba(231,238,250,0.62)", marginTop: 2 }}>{session.user.email}</div>
         </div>
-        <Link href="/perfil">
+        <Link href="/perfil/editar">
           <div style={{
             padding: "7px 12px", borderRadius: 9,
             border: "1px solid rgba(255,255,255,0.14)",
@@ -83,7 +94,7 @@ export default async function ConfiguracoesPage() {
         <SettingRow
           icon="user" iconBg="#3CAC3B"
           label="Informações pessoais" hint="Nome, foto de perfil"
-          href="/perfil"
+          href="/perfil/editar"
         />
         <SettingRow
           icon="mail" iconBg="#4d62c9"
@@ -100,7 +111,8 @@ export default async function ConfiguracoesPage() {
 
       {/* Notificações */}
       <SettingGroup title="Notificações">
-        <NotificationToggles />
+        <PushToggle />
+        <NotificationToggles initial={notifPrefs} />
       </SettingGroup>
 
       {/* Preferências */}

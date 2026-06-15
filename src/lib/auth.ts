@@ -46,7 +46,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
-          avatarUrl: user.avatarUrl,
         };
       },
     }),
@@ -77,15 +76,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, trigger, session }) {
       if (user?.id) {
         token.id = user.id;
-        // Fetch DB row to get role + avatarUrl (adapter doesn't forward custom fields)
-        const dbUser = await db.user.findUnique({ where: { id: user.id as string } });
+        // Fetch only role — adapter doesn't forward custom fields.
+        // NEVER store the avatar here: it can be a large base64 data URI, which
+        // would bloat the encrypted JWT cookie and break login (nginx 502).
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id as string },
+          select: { role: true },
+        });
         token.role = dbUser?.role ?? "PARTICIPANT";
-        token.avatarUrl = dbUser?.avatarUrl ?? dbUser?.image ?? null;
       }
 
       if (trigger === "update" && session) {
         token.name = session.name;
-        token.avatarUrl = session.avatarUrl;
       }
 
       return token;
@@ -94,7 +96,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        session.user.avatarUrl = token.avatarUrl as string | null;
       }
       return session;
     },
@@ -108,7 +109,6 @@ declare module "next-auth" {
       name: string;
       email: string;
       role: string;
-      avatarUrl: string | null;
     };
   }
 }

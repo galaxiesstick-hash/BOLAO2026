@@ -14,6 +14,7 @@
 export type MatchAccuracyType =
   | "EXACT"           // Cravado — placar exato
   | "ALMOST_EXACT"    // Quase Cravou — vencedor + gols do vencedor certos
+  | "GOAL_DIFF"       // Acertou o Saldo — vencedor + diferença de gols certa
   | "WINNER_ONLY"     // Acerto Parcial — só acertou vencedor
   | "ONE_SCORE_ONLY"  // Meio Acerto — acertou exatamente 1 dos 2 placares (errou vencedor)
   | "MISS";           // Errou tudo
@@ -88,7 +89,14 @@ export function classifyAccuracy(
       (actualWinner === "away"  && predAway === actualAway) ||
       (actualWinner === "draw"  && predHome === actualHome); // empate: qualquer placar igual conta
 
-    return winnerGoalsCorrect ? "ALMOST_EXACT" : "WINNER_ONLY";
+    if (winnerGoalsCorrect) return "ALMOST_EXACT";
+
+    // Acertou saldo — mesma diferença de gols, mas gols do vencedor errados
+    const actualDiff = Math.abs(actualHome - actualAway);
+    const predDiff   = Math.abs(predHome  - predAway);
+    if (actualDiff === predDiff) return "GOAL_DIFF";
+
+    return "WINNER_ONLY";
   }
 
   // Errou o vencedor — verificar se acertou exatamente 1 placar
@@ -162,7 +170,7 @@ export function calculateScore(
     return { accuracyType: "ONE_SCORE_ONLY", basePoints: 0, bonusPoints: 1, totalPoints: 1 };
   }
 
-  const bonus = accuracy === "EXACT" ? 5 : accuracy === "ALMOST_EXACT" ? 3 : 1;
+  const bonus = accuracy === "EXACT" ? 5 : accuracy === "ALMOST_EXACT" ? 3 : accuracy === "GOAL_DIFF" ? 2 : 1;
   return {
     accuracyType: accuracy,
     basePoints: base,

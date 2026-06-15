@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -130,6 +130,14 @@ export default function CadastroPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const strength = useMemo(() => getStrength(form.password), [form.password]);
+  const [registrationCount, setRegistrationCount] = useState(82);
+
+  useEffect(() => {
+    fetch("/api/stats")
+      .then(r => r.json())
+      .then(d => { if (d.registrations) setRegistrationCount(d.registrations); })
+      .catch(() => {});
+  }, []);
 
   function update(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }));
@@ -229,6 +237,16 @@ export default function CadastroPage() {
           </div>
 
           <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo_icone.png"
+                alt="Bolão Lamparão"
+                width={71}
+                height={80}
+                style={{ objectFit: "contain" }}
+              />
+            </div>
             <div style={{ fontFamily: "var(--font-bebas, 'Bebas Neue', sans-serif)", fontSize: 36, color: T.text, lineHeight: 0.95, letterSpacing: 0.8 }}>
               VEM SER O
             </div>
@@ -238,6 +256,23 @@ export default function CadastroPage() {
           </div>
           <div style={{ marginTop: 10, fontSize: 12.5, color: T.muted, lineHeight: 1.45 }}>
             Em 30 segundos você tá dentro do bolão da Copa 2026.
+          </div>
+
+          {/* Social proof counter */}
+          <div style={{
+            marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 12px", borderRadius: 10,
+            background: T.goldSoft, border: `1px solid ${T.goldLine}`,
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke={T.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="9" cy="7" r="4" stroke={T.gold} strokeWidth="2" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke={T.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>
+              <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{registrationCount}</span>{" "}
+              pessoas já realizaram o cadastro
+            </span>
           </div>
         </div>
 

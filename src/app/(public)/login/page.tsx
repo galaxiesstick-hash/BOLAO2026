@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -32,26 +32,39 @@ export default function LoginPage() {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [registrationCount, setRegistrationCount] = useState(82);
+
+  useEffect(() => {
+    fetch("/api/stats")
+      .then(r => r.json())
+      .then(d => { if (d.registrations) setRegistrationCount(d.registrations); })
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
 
-    if (result?.error) {
+      if (result?.error) {
+        setError("E-mail ou senha incorretos.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
       setError("E-mail ou senha incorretos.");
       setLoading(false);
-      return;
     }
-
-    router.push("/dashboard");
-    router.refresh();
   }
 
   async function handleGoogle() {
@@ -139,6 +152,25 @@ export default function LoginPage() {
             Crave o placar. Suba na divisão. Vire{" "}
             <span style={{ color: T.gold, fontWeight: 700 }}>aquele lamparão</span>
             {" "}que enche o saco da galera.
+          </div>
+        </div>
+
+        {/* Social proof counter */}
+        <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 12px", borderRadius: 10,
+            background: T.goldSoft, border: `1px solid ${T.goldLine}`,
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke={T.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="9" cy="7" r="4" stroke={T.gold} strokeWidth="2" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke={T.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>
+              <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{registrationCount}</span>{" "}
+              pessoas já realizaram o cadastro
+            </span>
           </div>
         </div>
 

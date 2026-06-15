@@ -15,7 +15,13 @@ const PUBLIC_PATHS = [
   "/api/webhooks",
   "/api/admin/reseed-matches",
   "/api/admin/register-efi-webhook",
+  "/api/admin/push-test",
+  "/api/admin/broadcast-poll",
+  "/api/admin/broadcast-pending",
+  "/api/admin/wc26-preview",
+  "/api/admin/digest-test",
   "/api/health",
+  "/api/stats",
 ];
 
 const ADMIN_PATHS = ["/admin"];

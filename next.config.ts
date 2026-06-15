@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     ],
   },
   // Silence Prisma warnings in Next.js; sdk-node-apis-efi needs native TLS (mTLS) — must not be bundled
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer", "sdk-node-apis-efi"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer", "sdk-node-apis-efi", "web-push"],
 };
 
 export default nextConfig;

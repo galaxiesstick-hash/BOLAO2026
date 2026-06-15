@@ -67,18 +67,23 @@ export default async function ComoFuncionaPage() {
           example="Palpite 2-1 · Real 2-1"
         />
         <ScoringCard
-          color="#3CAC3B" icon="✓" label="ACERTO PERFEITO" pts="base + 3"
-          desc="Acertou o vencedor e o saldo de gols."
+          color="#3CAC3B" icon="✓" label="QUASE CRAVOU" pts="base + 3"
+          desc="Acertou os gols do vencedor, mas errou os do perdedor."
+          example="Palpite 4-1 · Real 4-2"
+        />
+        <ScoringCard
+          color="#22a5b0" icon="≈" label="ACERTOU O SALDO" pts="base + 2"
+          desc="Acertou o vencedor e a diferença de gols, mas errou os placares individuais."
           example="Palpite 2-1 · Real 3-2"
         />
         <ScoringCard
           color="#4d62c9" icon="~" label="ACERTO PARCIAL" pts="base + 1"
-          desc="Acertou o vencedor, errou o saldo."
+          desc="Acertou o vencedor, mas errou o saldo e os placares."
           example="Palpite 2-1 · Real 4-1"
         />
         <ScoringCard
-          color="#5d6f88" icon="½" label="MEIO ACERTO" pts="1 fixo"
-          desc="Acertou exatamente 1 dos 2 placar mas errou o vencedor."
+          color="#5d6f88" icon="½" label="ESMOLA" pts="1 fixo"
+          desc="A esmola do bolão: você errou o vencedor, mas acertou exatamente o número de gols de um dos times. Vale +1 ponto de consolação, mas NÃO conta como acerto — quebra sua sequência de acertos."
           example="Palpite 2-1 · Real 2-2"
         />
         <ScoringCard

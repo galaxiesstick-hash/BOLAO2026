@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { pushRespectingQuiet } from "@/lib/notify";
 
 const WHATSAPP_GROUP_URL = "https://chat.whatsapp.com/Bqpy7AQnce6GN3h2ekB6nb";
 
@@ -24,4 +25,12 @@ export async function createApprovalNotifications(userId: string): Promise<void>
       },
     ],
   });
+
+  // Push to the phone (respects "não perturbe")
+  await pushRespectingQuiet(userId, {
+    title: "✅ Pagamento confirmado!",
+    body: "Sua inscrição no Bolão Lamparão está confirmada. Bom bolão!",
+    url: "/dashboard",
+    tag: "payment_approved",
+  }).catch(() => {});
 }

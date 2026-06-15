@@ -16,6 +16,13 @@ export async function GET() {
         where: { userId: session.user.id },
         select: { answer: true, correct: true, points: true },
       },
+      match: {
+        select: {
+          id: true, kickoff: true, status: true,
+          homeTeamName: true, homeTeamCode: true,
+          awayTeamName: true, awayTeamCode: true,
+        },
+      },
       _count: { select: { answers: true } },
     },
   });
