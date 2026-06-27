@@ -123,6 +123,7 @@ export default function MatchDetailClient({
 
   // Public predictions for Bolão tab
   const [publicPredictions, setPublicPredictions] = useState<PublicPrediction[] | null>(null);
+  const [publicMissing, setPublicMissing] = useState<string[]>([]);
   const [loadingBolao, setLoadingBolao] = useState(false);
 
   useEffect(() => {
@@ -131,7 +132,10 @@ export default function MatchDetailClient({
     setLoadingBolao(true);
     fetch(`/api/jogos/${matchId}/palpites`)
       .then((r) => r.json())
-      .then((d) => setPublicPredictions(d.predictions ?? []))
+      .then((d) => {
+        setPublicPredictions(d.predictions ?? []);
+        setPublicMissing(d.missing ?? []);
+      })
       .catch(() => setPublicPredictions([]))
       .finally(() => setLoadingBolao(false));
   }, [activeTab, isLocked, matchId, publicPredictions]);
@@ -273,11 +277,13 @@ export default function MatchDetailClient({
         isLocked
           ? <BolaoTab
               predictions={publicPredictions}
+              missing={publicMissing}
               loading={loadingBolao}
               homeTeamCode={homeTeamCode}
               awayTeamCode={awayTeamCode}
               matchStatus={matchStatus}
               liveScore={liveScore}
+              kickoff={kickoff}
               homeProb={homeProb ?? null}
               drawProb={drawProb ?? null}
               awayProb={awayProb ?? null}
@@ -299,15 +305,17 @@ export default function MatchDetailClient({
 // ─── Bolão Tab ────────────────────────────────────────────────────────────────
 
 function BolaoTab({
-  predictions, loading, homeTeamCode, awayTeamCode, matchStatus, liveScore,
+  predictions, missing, loading, homeTeamCode, awayTeamCode, matchStatus, liveScore, kickoff,
   homeProb, drawProb, awayProb,
 }: {
   predictions: PublicPrediction[] | null;
+  missing: string[];
   loading: boolean;
   homeTeamCode: string;
   awayTeamCode: string;
   matchStatus: string;
   liveScore: { home: number; away: number } | null;
+  kickoff: string;
   homeProb: number | null;
   drawProb: number | null;
   awayProb: number | null;
@@ -344,6 +352,7 @@ function BolaoTab({
       pred.homeGoals, pred.awayGoals,
       liveScore!.home, liveScore!.away,
       homeProb ?? 33.33, drawProb ?? 33.33, awayProb ?? 33.33,
+      kickoff,
     );
     return result.totalPoints;
   };
@@ -444,6 +453,42 @@ function BolaoTab({
           </div>
         );
       })}
+
+      {missing.length > 0 && <MissingSection missing={missing} />}
+    </div>
+  );
+}
+
+// ─── Não palpitaram ───────────────────────────────────────────────────────────
+
+function MissingSection({ missing }: { missing: string[] }) {
+  return (
+    <div style={{
+      borderRadius: 14, overflow: "hidden",
+      border: "1px solid rgba(230,29,37,0.22)",
+      background: "rgba(230,29,37,0.05)",
+    }}>
+      <div style={{
+        padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "rgba(230,29,37,0.08)",
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#f3a3a6", letterSpacing: 0.3 }}>
+          🔕 Não palpitaram
+        </span>
+        <span style={{ fontSize: 11, color: "rgba(231,238,250,0.5)" }}>{missing.length}</span>
+      </div>
+      <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {missing.map((name) => (
+          <span key={name} style={{
+            fontSize: 11, color: "rgba(231,238,250,0.72)", fontWeight: 500,
+            padding: "3px 9px", borderRadius: 99,
+            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            {name}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

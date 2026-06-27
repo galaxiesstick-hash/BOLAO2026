@@ -338,8 +338,10 @@ export async function sendPredictionsDigestEmail(params: {
   to: string;
   match: { homeTeamName: string; awayTeamName: string; homeFlag: string; awayFlag: string; kickoff: Date };
   predictions: { name: string; rank: number | null; homeGoals: number; awayGoals: number }[];
+  missing?: string[];
 }) {
   const { to, match, predictions } = params;
+  const missing = params.missing ?? [];
   const kickoffStr =
     new Intl.DateTimeFormat("pt-BR", {
       weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
@@ -394,6 +396,21 @@ export async function sendPredictionsDigestEmail(params: {
     })
     .join("");
 
+  const missingBlock =
+    missing.length === 0
+      ? ""
+      : `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;border:1px solid rgba(230,29,37,0.22);border-radius:14px;overflow:hidden;background:rgba(230,29,37,0.05);">
+        <tr><td style="padding:8px 14px;background:rgba(230,29,37,0.08);border-bottom:1px solid rgba(255,255,255,0.06);">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="font-size:11.5px;font-weight:800;color:#f3a3a6;letter-spacing:0.3px;">🔕 Não palpitaram</td>
+            <td align="right" style="font-size:11px;color:rgba(231,238,250,0.5);">${missing.length}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:9px 14px;font-size:12.5px;line-height:1.7;color:rgba(231,238,250,0.72);">
+          ${missing.map((n) => escapeHtml(n)).join(" · ")}
+        </td></tr>
+      </table>`;
+
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
 <body style="margin:0;padding:0;background:#060f1f;font-family:'Helvetica Neue',Arial,sans-serif;">
@@ -417,6 +434,7 @@ export async function sendPredictionsDigestEmail(params: {
               ? `<p style="text-align:center;color:rgba(231,238,250,0.45);font-size:13px;padding:18px;">Ninguém palpitou neste jogo.</p>`
               : rows
           }
+          ${missingBlock}
         </td></tr>
       </td></tr>
       <tr><td style="padding-top:16px;text-align:center;">

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { calculateScore } from "@/lib/scoring";
-import { fetchWorldCupOdds } from "@/lib/oddsApi";
+import { calculateScore, ZEBRA_HISTORICA_THRESHOLD } from "@/lib/scoring";
+import { fetchWorldCupOdds, type MatchOdds } from "@/lib/oddsApi";
 import {
   fetchAllCompetitionMatches,
   fetchLiveMatches,
@@ -380,6 +380,7 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
         homeProb,
         drawProb,
         awayProb,
+        match.kickoff,
       );
 
       await db.prediction.update({
@@ -559,6 +560,65 @@ export async function triggerPointsCalculation(matchIds: string[]): Promise<Poin
   return { calculated };
 }
 
+// ─── Draw-odds balancing (locked & automatic on every odds update) ─────────────
+// The draw probability drives both the Zebra Histórica (prob < 10% → 20 fixed
+// base pts) and base = round((100-prob)/100*15) — and lower % means MORE points
+// (inverse). To keep draws fair without touching the published formula:
+//   • draw  < 5%  → left untouched → stays a genuine (ultra-rare) zebra.
+//   • 5%–15%      → remapped into a random value in [10,15]% (proportional to the
+//                   real %), pulling it out of zebra range without inflating points.
+//   • draw > 15%  → subtle inflation (~20%) → ≈ -1 base point on common draws.
+// The difference is always taken from the FAVOURITE (higher %), never the underdog
+// (which sits by the 10% zebra cliff and whose real upset value must stay intact).
+// Participants only ever see the resulting points, never the probability.
+const DRAW_ZEBRA_BELOW = 5;  // empate < 5% real → continua zebra (intocado)
+const DRAW_BAND_LO = 10;     // faixa de destino p/ empates de 5% a 15%
+const DRAW_BAND_HI = 15;
+const DRAW_MULT = 1.2;       // empates comuns (>15%) → infla ~20% (≈ -1 ponto)
+// Vale só a partir de 16/06 00h (Brasília); jogos anteriores ficam intocados.
+const DRAW_BALANCE_FROM = new Date("2026-06-16T03:00:00Z");
+
+function balanceDrawOdds(o: MatchOdds): MatchOdds {
+  const d = o.drawProb;
+  if (d < DRAW_ZEBRA_BELOW) return o; // zebra de verdade — sem ajuste
+
+  let target: number;
+  if (d <= DRAW_BAND_HI) {
+    // 5–15% → mapeia proporcionalmente p/ [10,15] + leve aleatoriedade (orgânico)
+    const mapped = DRAW_BAND_LO
+      + ((d - DRAW_ZEBRA_BELOW) / (DRAW_BAND_HI - DRAW_ZEBRA_BELOW)) * (DRAW_BAND_HI - DRAW_BAND_LO);
+    const jitter = (Math.random() - 0.5) * 1.5; // ±0.75
+    target = Math.min(DRAW_BAND_HI, Math.max(DRAW_BAND_LO, mapped + jitter));
+  } else {
+    // >15% (comum) → nerf sutil por inflação
+    target = Math.min(d * DRAW_MULT, 55);
+  }
+
+  const delta = target - d;
+  if (delta <= 0) return o; // nunca abaixa o empate (nunca vira buff)
+
+  // Tira a diferença do favorito (maior %); se cruzar o azarão, divide o resto.
+  let home = o.homeWinProb;
+  let away = o.awayWinProb;
+  const favHome = home >= away;
+  const room = Math.abs(home - away);
+  if (delta <= room) {
+    if (favHome) home -= delta; else away -= delta;
+  } else {
+    const rest = (delta - room) / 2;
+    if (favHome) home -= room; else away -= room;
+    home -= rest;
+    away -= rest;
+  }
+
+  return {
+    ...o,
+    homeWinProb: Math.round(Math.max(home, 0) * 10) / 10,
+    drawProb:    Math.round(target * 10) / 10,
+    awayWinProb: Math.round(Math.max(away, 0) * 10) / 10,
+  };
+}
+
 export async function syncOdds(): Promise<{
   updated: number;
   skipped: number;
@@ -571,28 +631,38 @@ export async function syncOdds(): Promise<{
   let updated = 0;
   let skipped = 0;
 
-  // Only update matches where the prediction window is still open (kickoff > 10min from now)
-  const lockCutoff = new Date(Date.now() + 10 * 60 * 1000);
+  // Auto-sync only updates odds for matches more than 24h away.
+  // Inside the 24h window, only admin can update odds manually.
+  const lockCutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   for (const odds of matches) {
-    const result = await db.match.updateMany({
+    const targets = await db.match.findMany({
       where: {
         homeTeamCode: odds.homeTeamCode,
         awayTeamCode: odds.awayTeamCode,
         status: "SCHEDULED",
         kickoff: { gt: lockCutoff },
       },
-      data: {
-        homeWinProb: odds.homeWinProb,
-        drawProb: odds.drawProb,
-        awayWinProb: odds.awayWinProb,
-        oddsSource: "the-odds-api",
-        oddsUpdatedAt: new Date(),
-      },
+      select: { id: true, kickoff: true },
     });
 
-    if (result.count > 0) updated += result.count;
-    else skipped++;
+    if (targets.length === 0) { skipped++; continue; }
+
+    for (const t of targets) {
+      // Locked & automatic: from the cutoff onward every odds update is balanced.
+      const finalOdds = t.kickoff >= DRAW_BALANCE_FROM ? balanceDrawOdds(odds) : odds;
+      await db.match.update({
+        where: { id: t.id },
+        data: {
+          homeWinProb: finalOdds.homeWinProb,
+          drawProb: finalOdds.drawProb,
+          awayWinProb: finalOdds.awayWinProb,
+          oddsSource: "the-odds-api",
+          oddsUpdatedAt: new Date(),
+        },
+      });
+      updated++;
+    }
   }
 
   return { updated, skipped, source: "the-odds-api", requestsRemaining, unmapped };
@@ -616,7 +686,7 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
         awayGoals: true,
         totalPoints: true,
         match: {
-          select: { homeGoals: true, awayGoals: true, homeWinProb: true, awayWinProb: true, kickoff: true },
+          select: { homeGoals: true, awayGoals: true, homeWinProb: true, drawProb: true, awayWinProb: true, kickoff: true },
         },
       },
       orderBy: { match: { kickoff: "asc" } },
@@ -659,13 +729,14 @@ export async function checkAndGrantAchievements(userId: string): Promise<void> {
       curStreak++;
       maxStreak = Math.max(maxStreak, curStreak);
 
-      // Zebra: underdog (prob < 15%) won and user predicted that winner correctly
-      const realHomeWin = m.homeGoals > m.awayGoals;
-      const realAwayWin = m.homeGoals < m.awayGoals;
+      // Zebra: correctly called an outcome — WIN or DRAW — that had < 10%
+      // probability. Same threshold/definition as the Zebra Histórica scoring
+      // rule, so "zebra" means the same thing across the whole system.
       const homeProb = m.homeWinProb ? Number(m.homeWinProb) : 34;
+      const drawProb = m.drawProb    ? Number(m.drawProb)    : 33;
       const awayProb = m.awayWinProb ? Number(m.awayWinProb) : 33;
-      if (realHomeWin && homeProb < 15) zebraWins++;
-      else if (realAwayWin && awayProb < 15) zebraWins++;
+      const outcomeProb = realWinner === "home" ? homeProb : realWinner === "away" ? awayProb : drawProb;
+      if (outcomeProb < ZEBRA_HISTORICA_THRESHOLD) zebraWins++;
     } else {
       curStreak = 0;
     }

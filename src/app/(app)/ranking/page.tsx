@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { calculateDivisions, getDivisionForRank } from "@/lib/divisions";
 import { getCachedAccountBalance } from "@/lib/efi";
 import { getLivePointsByUser, computePeriodPoints, periodWindows, type PeriodPoints } from "@/lib/ranking";
+import { getFlagUrl } from "@/lib/utils";
 import RankingClient, { RankingEntry } from "./_components/RankingClient";
 
 export const dynamic = "force-dynamic";
@@ -75,10 +76,11 @@ export default async function RankingPage() {
   const divisions = calculateDivisions(totalParticipants);
 
   // Live provisional points (from matches in progress) + period windows
-  const [livePts, periodTodayMap, periodWeekMap] = await Promise.all([
+  const [livePts, periodTodayMap, periodWeekMap, periodYesterdayMap] = await Promise.all([
     getLivePointsByUser(),
     (async () => computePeriodPoints(periodWindows().todayStart, periodWindows().end))(),
     (async () => computePeriodPoints(periodWindows().weekStart, periodWindows().end))(),
+    (async () => { const w = periodWindows(); return computePeriodPoints(w.yesterdayStart, w.todayStart); })(),
   ]);
 
   const userInfo = new Map(scores.map((s) => [s.user.id, s.user] as const));
@@ -131,13 +133,15 @@ export default async function RankingPage() {
 
   // ── Period rankings (daily / weekly) — match + question + achievement points
   // earned in the window, plus live provisional points (a live match is "today").
-  const buildPeriod = (pmap: Map<string, PeriodPoints>): RankingEntry[] => {
+  // includeLive: add live provisional points (only for windows that include "now",
+  // i.e. Hoje/Semana). "Ontem" is a closed window, so it must NOT include live points.
+  const buildPeriod = (pmap: Map<string, PeriodPoints>, includeLive = true): RankingEntry[] => {
     const arr: { id: string; matchPoints: number; questionPoints: number; achievementPoints: number; live: number; total: number }[] = [];
-    const ids = new Set<string>([...pmap.keys(), ...livePts.keys()]);
+    const ids = new Set<string>(includeLive ? [...pmap.keys(), ...livePts.keys()] : [...pmap.keys()]);
     for (const id of ids) {
       if (!userInfo.has(id)) continue; // approved participants only
       const pp = pmap.get(id) ?? { matchPoints: 0, questionPoints: 0, achievementPoints: 0, total: 0 };
-      const live = livePts.get(id) ?? 0;
+      const live = includeLive ? (livePts.get(id) ?? 0) : 0;
       const total = pp.total + live;
       if (total <= 0) continue;
       arr.push({ id, matchPoints: pp.matchPoints + live, questionPoints: pp.questionPoints, achievementPoints: pp.achievementPoints, live, total });
@@ -169,7 +173,34 @@ export default async function RankingPage() {
     });
   };
 
-  const rankings = { hoje: buildPeriod(periodTodayMap), semana: buildPeriod(periodWeekMap) };
+  const rankings = {
+    hoje: buildPeriod(periodTodayMap),
+    ontem: buildPeriod(periodYesterdayMap, false), // closed window — no live points
+    semana: buildPeriod(periodWeekMap),
+  };
+
+  // Live matches (with everyone's predictions + odds) for the what-if simulator.
+  const liveMatchesRaw = await db.match.findMany({
+    where: { status: "LIVE", homeGoals: { not: null }, awayGoals: { not: null } },
+    select: {
+      id: true, homeTeamName: true, awayTeamName: true, homeTeamCode: true, awayTeamCode: true,
+      homeTeamFlag: true, awayTeamFlag: true, kickoff: true, homeGoals: true, awayGoals: true,
+      homeWinProb: true, drawProb: true, awayWinProb: true,
+      predictions: { select: { userId: true, homeGoals: true, awayGoals: true } },
+    },
+  });
+  const liveSim = liveMatchesRaw.map((m) => ({
+    matchId: m.id,
+    homeTeamName: m.homeTeamName, awayTeamName: m.awayTeamName,
+    homeTeamCode: m.homeTeamCode, awayTeamCode: m.awayTeamCode,
+    homeFlag: getFlagUrl(m.homeTeamFlag, 40), awayFlag: getFlagUrl(m.awayTeamFlag, 40),
+    kickoff: m.kickoff.toISOString(),
+    homeGoals: m.homeGoals!, awayGoals: m.awayGoals!,
+    homeProb: m.homeWinProb ? Number(m.homeWinProb) : 33.33,
+    drawProb: m.drawProb ? Number(m.drawProb) : 33.33,
+    awayProb: m.awayWinProb ? Number(m.awayWinProb) : 33.33,
+    predictions: m.predictions,
+  }));
 
   return (
     <RankingClient
@@ -181,6 +212,7 @@ export default async function RankingPage() {
       approvedCount={approvedCount}
       showPrizePool={showPrizePool}
       rankings={rankings}
+      liveSim={liveSim}
     />
   );
 }

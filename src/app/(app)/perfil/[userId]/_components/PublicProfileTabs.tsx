@@ -110,7 +110,7 @@ export default function PublicProfileTabs({ userId, firstName }: { userId: strin
                 const hp = pred.match.homeWinProb != null ? Number(pred.match.homeWinProb) : 33.33;
                 const dp = pred.match.drawProb != null ? Number(pred.match.drawProb) : 33.33;
                 const ap = pred.match.awayWinProb != null ? Number(pred.match.awayWinProb) : 33.33;
-                const r = calculateScore(pred.homeGoals, pred.awayGoals, pred.match.homeGoals!, pred.match.awayGoals!, hp, dp, ap);
+                const r = calculateScore(pred.homeGoals, pred.awayGoals, pred.match.homeGoals!, pred.match.awayGoals!, hp, dp, ap, pred.match.kickoff);
                 acc = r.accuracyType;
                 pts = r.totalPoints;
               }

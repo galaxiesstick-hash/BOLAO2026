@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getLivePointsByUser, getAccuracyBreakdown } from "@/lib/ranking";
+import { getAchievementGroups } from "@/lib/achievements";
+import { AchievementCard } from "@/components/AchievementCard";
 import Link from "next/link";
 import { getInitials } from "@/lib/utils";
 import AccuracyBreakdownCard from "@/components/AccuracyBreakdownCard";
@@ -9,21 +11,6 @@ import OnlineAvatarRing from "@/components/presence/OnlineAvatarRing";
 import PublicProfileTabs from "./_components/PublicProfileTabs";
 
 export const dynamic = "force-dynamic";
-
-const ACHIEVEMENT_META: Record<string, { label: string; desc: string; color: string }> = {
-  CRAVADOR_I:          { label: "Cravador I",       desc: "Cravou 1 placar exato",       color: "#C9A84C" },
-  CRAVADOR_II:         { label: "Cravador II",      desc: "Cravou 5 placares exatos",     color: "#C9A84C" },
-  CRAVADOR_III:        { label: "Cravador III",     desc: "Cravou 10 placares exatos",    color: "#C9A84C" },
-  SEQUENCIA_QUENTE_I:  { label: "Em Chamas I",      desc: "3 acertos consecutivos",       color: "#E61D25" },
-  SEQUENCIA_QUENTE_II: { label: "Em Chamas II",     desc: "5 acertos consecutivos",       color: "#E61D25" },
-  SEQUENCIA_QUENTE_III:{ label: "Em Chamas III",    desc: "7 acertos consecutivos",       color: "#E61D25" },
-  REI_DAS_ZEBRAS_I:    { label: "Rei das Zebras I", desc: "1 vitória improvável acertada", color: "#4d62c9" },
-  REI_DAS_ZEBRAS_II:   { label: "Rei das Zebras II",desc: "3 vitórias improváveis",       color: "#4d62c9" },
-  REI_DAS_ZEBRAS_III:  { label: "Rei das Zebras III",desc:"5 vitórias improváveis",       color: "#4d62c9" },
-  INVENCIVEL_I:        { label: "Invencível I",     desc: "10 jogos pontuados",           color: "#3CAC3B" },
-  INVENCIVEL_II:       { label: "Invencível II",    desc: "20 jogos pontuados",           color: "#3CAC3B" },
-  INVENCIVEL_III:      { label: "Invencível III",   desc: "30 jogos pontuados",           color: "#3CAC3B" },
-};
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ userId: string }> }) {
   const session = await auth();
@@ -55,6 +42,17 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
   const livePoints = (await getLivePointsByUser()).get(userId) ?? 0;
   const accuracyBreakdown = await getAccuracyBreakdown(userId);
+  // Achievement groups from the live config; public profile shows ONLY the
+  // groups this participant has already unlocked (>=1 level), without the
+  // progress bar — just the level reached.
+  const achievementGroups = await getAchievementGroups();
+  const unlockedTypes = new Set(targetAchievements.map((a) => a.type));
+  const unlockedGroups = achievementGroups
+    .map((group) => ({
+      group,
+      unlockedLevel: group.levels.reduce((lvl, l, i) => (unlockedTypes.has(l.type) ? i + 1 : lvl), 0),
+    }))
+    .filter((g) => g.unlockedLevel > 0);
   const totalPoints = (targetScore?.totalPoints ?? 0) + livePoints;
   const overallRank = targetScore?.overallRank ?? null;
   const exactScores = targetScore?.exactScores ?? 0;
@@ -145,34 +143,22 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       {/* Accuracy breakdown by type */}
       <AccuracyBreakdownCard counts={accuracyBreakdown} />
 
-      {/* Conquistas */}
-      {targetAchievements.length > 0 && (
+      {/* Conquistas — só as já obtidas (>=1 nível), sem barra de progresso */}
+      {unlockedGroups.length > 0 && (
         <section>
           <div className="flex justify-between items-center mb-3">
             <span className="font-bold text-sm" style={{ color: "#f3f6fb" }}>Conquistas</span>
             <span style={{ fontSize: 11, color: "#C9A84C", fontWeight: 600 }}>{targetAchievements.length} desbloqueadas</span>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-            {targetAchievements.map((a) => {
-              const meta = ACHIEVEMENT_META[a.type] ?? { label: a.type, desc: "", color: "#C9A84C" };
-              return (
-                <div
-                  key={a.type}
-                  title={meta.desc}
-                  style={{
-                    flexShrink: 0, width: 90, padding: "10px 8px", borderRadius: 14,
-                    background: `linear-gradient(180deg, ${meta.color}22, ${meta.color}08)`,
-                    border: `1px solid ${meta.color}55`,
-                    textAlign: "center", cursor: "default",
-                  }}
-                >
-                  <div style={{ fontSize: 22, lineHeight: 1, marginBottom: 6 }}>🏅</div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#f3f6fb", lineHeight: 1.2 }}>{meta.label}</div>
-                  <div style={{ fontSize: 8.5, color: meta.color, fontWeight: 700, marginTop: 3 }}>+{a.pointsBonus} pts</div>
-                  <div style={{ fontSize: 8, color: "rgba(231,238,250,0.45)", marginTop: 3, lineHeight: 1.3 }}>{meta.desc}</div>
-                </div>
-              );
-            })}
+            {unlockedGroups.map(({ group, unlockedLevel }) => (
+              <AchievementCard
+                key={group.key}
+                group={group}
+                unlockedLevel={unlockedLevel}
+                showProgress={false}
+              />
+            ))}
           </div>
         </section>
       )}

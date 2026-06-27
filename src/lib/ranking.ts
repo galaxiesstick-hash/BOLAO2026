@@ -9,6 +9,7 @@ export async function getLivePointsByUser(): Promise<Map<string, number>> {
   const liveMatches = await db.match.findMany({
     where: { status: "LIVE", homeGoals: { not: null }, awayGoals: { not: null } },
     select: {
+      kickoff: true,
       homeGoals: true, awayGoals: true,
       homeWinProb: true, drawProb: true, awayWinProb: true,
       predictions: { select: { userId: true, homeGoals: true, awayGoals: true } },
@@ -21,7 +22,7 @@ export async function getLivePointsByUser(): Promise<Map<string, number>> {
     const dp = m.drawProb ? Number(m.drawProb) : 33.33;
     const ap = m.awayWinProb ? Number(m.awayWinProb) : 33.33;
     for (const p of m.predictions) {
-      const r = calculateScore(p.homeGoals, p.awayGoals, m.homeGoals!, m.awayGoals!, hp, dp, ap);
+      const r = calculateScore(p.homeGoals, p.awayGoals, m.homeGoals!, m.awayGoals!, hp, dp, ap, m.kickoff);
       if (r.totalPoints > 0) map.set(p.userId, (map.get(p.userId) ?? 0) + r.totalPoints);
     }
   }
@@ -113,12 +114,13 @@ export async function computePeriodPoints(start: Date, end: Date): Promise<Map<s
 }
 
 /** Window helpers in America/Sao_Paulo (BRT, UTC-3). */
-export function periodWindows(now = new Date()): { todayStart: Date; weekStart: Date; end: Date } {
+export function periodWindows(now = new Date()): { yesterdayStart: Date; todayStart: Date; weekStart: Date; end: Date } {
   const dayStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(now);
   // BRT midnight = 03:00 UTC
   const todayStart = new Date(`${dayStr}T03:00:00.000Z`);
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
   const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  return { todayStart, weekStart, end: now };
+  return { yesterdayStart, todayStart, weekStart, end: now };
 }

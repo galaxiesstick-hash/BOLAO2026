@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Trash2, CheckCircle2, Circle, HelpCircle, Pencil, X } from "lucide-react";
 
 interface Question {
@@ -28,6 +28,13 @@ interface MatchOption {
 }
 
 type QuestionType = "MULTIPLE_CHOICE" | "YES_NO" | "FREE_TEXT" | "NUMBER";
+type QTab = "corrigir" | "aberta" | "concluida";
+
+const TAB_META: Record<QTab, { label: string; color: string }> = {
+  corrigir: { label: "A corrigir", color: "#E61D25" },
+  aberta: { label: "Abertas", color: "#3CAC3B" },
+  concluida: { label: "Concluídas", color: "#C9A84C" },
+};
 
 function matchLabel(m: MatchOption): string {
   const when = new Date(m.kickoff).toLocaleDateString("pt-BR", {
@@ -114,6 +121,34 @@ export default function PerguntasClient({ questions: initial, matches }: { quest
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<QTab>("corrigir");
+
+  // Status of each question + buckets. "A corrigir" = the linked game already
+  // started/finished (or the deadline passed) but no correct answer set yet — the
+  // ones that need the admin's attention.
+  const eventTime = (q: Question): number | null =>
+    q.match ? new Date(q.match.kickoff).getTime() : q.deadline ? new Date(q.deadline).getTime() : null;
+  const statusOf = (q: Question): QTab => {
+    if (q.correctAnswer) return "concluida";
+    const et = eventTime(q);
+    return et !== null && et <= Date.now() ? "corrigir" : "aberta";
+  };
+
+  const { corrigir, aberta, concluida } = useMemo(() => {
+    const corr: Question[] = [], abe: Question[] = [], conc: Question[] = [];
+    for (const q of questions) {
+      const s = statusOf(q);
+      (s === "corrigir" ? corr : s === "aberta" ? abe : conc).push(q);
+    }
+    const etv = (q: Question) => eventTime(q) ?? 0;
+    corr.sort((a, b) => etv(b) - etv(a)); // ao vivo / mais recente primeiro
+    abe.sort((a, b) => (eventTime(a) ?? Infinity) - (eventTime(b) ?? Infinity)); // próximas a vencer primeiro
+    conc.sort((a, b) => etv(b) - etv(a)); // mais recentes primeiro
+    return { corrigir: corr, aberta: abe, concluida: conc };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions]);
+
+  const displayed = tab === "corrigir" ? corrigir : tab === "aberta" ? aberta : concluida;
 
   async function handleCreate() {
     if (!form.text.trim()) return;
@@ -208,6 +243,18 @@ export default function PerguntasClient({ questions: initial, matches }: { quest
       body: JSON.stringify({ correctAnswer: answer }),
     });
     setQuestions(qs => qs.map(q => q.id === id ? { ...q, correctAnswer: answer } : q));
+  }
+
+  // Clears the correct answer: re-scores all answers to 0 and recomputes scores
+  // server-side, so the question goes back to "A corrigir" (não respondida).
+  async function handleClearAnswer(id: string) {
+    if (!confirm("Zerar a resposta correta desta pergunta? Ela volta para 'A corrigir' e os pontos dela são removidos do ranking.")) return;
+    await fetch(`/api/admin/perguntas/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ correctAnswer: null }),
+    });
+    setQuestions(qs => qs.map(q => q.id === id ? { ...q, correctAnswer: null } : q));
   }
 
   async function handleDelete(id: string) {
@@ -359,9 +406,31 @@ export default function PerguntasClient({ questions: initial, matches }: { quest
           </p>
         </div>
       ) : (
-        questions.map(q => {
-          const opts: string[] = Array.isArray(q.options) ? (q.options as string[]) : q.type === "YES_NO" ? ["Sim", "Não"] : [];
-          return (
+        <>
+          {/* Status tabs */}
+          <div style={{ display: "flex", gap: 4, padding: 4, background: "rgba(255,255,255,0.04)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
+            {(["corrigir", "aberta", "concluida"] as QTab[]).map((t) => {
+              const counts = { corrigir: corrigir.length, aberta: aberta.length, concluida: concluida.length };
+              const m = TAB_META[t];
+              const active = tab === t;
+              return (
+                <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: "9px 4px", borderRadius: 9, border: "none", cursor: "pointer", background: active ? "#1c2f4d" : "transparent", color: active ? "#f3f6fb" : "rgba(231,238,250,0.55)", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 99, background: m.color, flexShrink: 0 }} />
+                  {m.label}
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: active ? m.color : "rgba(231,238,250,0.4)" }}>{counts[t]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {displayed.length === 0 ? (
+            <div style={{ padding: "40px 24px", textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", color: "rgba(231,238,250,0.4)", fontSize: 13 }}>
+              {tab === "corrigir" ? "Nada a corrigir no momento 🎉" : tab === "aberta" ? "Nenhuma pergunta aberta." : "Nenhuma pergunta concluída ainda."}
+            </div>
+          ) : (
+            displayed.map(q => {
+              const opts: string[] = Array.isArray(q.options) ? (q.options as string[]) : q.type === "YES_NO" ? ["Sim", "Não"] : [];
+              return (
             <div key={q.id} style={{
               background: "rgba(255,255,255,0.03)", borderRadius: 18,
               border: "1px solid rgba(255,255,255,0.07)", padding: "16px 18px",
@@ -372,6 +441,11 @@ export default function PerguntasClient({ questions: initial, matches }: { quest
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.4 }}>{q.text}</p>
                   <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" as const }}>
+                    {(() => {
+                      const s = statusOf(q);
+                      const m = TAB_META[s];
+                      return <span style={tagStyle(m.color)}>{s === "corrigir" ? "⚠ A CORRIGIR" : m.label}</span>;
+                    })()}
                     <span style={tagStyle("#2A398D")}>{TYPE_LABELS[q.type as QuestionType] ?? q.type}</span>
                     <span style={tagStyle("#C9A84C")}>{q.pointsValue} pts</span>
                     <span style={tagStyle("rgba(231,238,250,0.3)")}>{q._count.answers} respostas</span>
@@ -546,13 +620,25 @@ export default function PerguntasClient({ questions: initial, matches }: { quest
               )}
 
               {q.correctAnswer && (
-                <p style={{ fontSize: 11, color: "#3CAC3B" }}>
-                  Resposta correta: <strong>{q.correctAnswer}</strong>
-                </p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" as const, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
+                  <p style={{ fontSize: 11, color: "#3CAC3B", margin: 0, flex: 1, minWidth: 140 }}>
+                    ✓ Resposta correta: <strong>{q.correctAnswer}</strong>
+                    <span style={{ color: "rgba(231,238,250,0.4)", fontWeight: 400 }}> · para corrigir, defina outra resposta acima</span>
+                  </p>
+                  <button
+                    onClick={() => handleClearAnswer(q.id)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(230,29,37,0.4)", background: "rgba(230,29,37,0.1)", color: "#E61D25", fontSize: 11.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                    title="Remover a resposta correta e voltar para 'A corrigir'"
+                  >
+                    ↺ Zerar resposta
+                  </button>
+                </div>
               )}
             </div>
           );
-        })
+            })
+          )}
+        </>
       )}
     </div>
   );

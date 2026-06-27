@@ -44,5 +44,16 @@ export async function GET(
     isCurrentUser: p.user.id === session.user.id,
   }));
 
-  return NextResponse.json({ locked: true, predictions: data });
+  // Approved participants who did NOT predict this match
+  const predictedIds = new Set(predictions.map((p) => p.user.id));
+  const approved = await db.user.findMany({
+    where: { role: "PARTICIPANT", payment: { status: "APPROVED" } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  const missing = approved
+    .filter((u) => !predictedIds.has(u.id))
+    .map((u) => u.name);
+
+  return NextResponse.json({ locked: true, predictions: data, missing });
 }

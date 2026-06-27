@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getInitials } from "@/lib/utils";
 import { Division } from "@/lib/divisions";
 import { useIsOnline } from "@/components/presence/PresenceProvider";
+import RankingSimulator, { type LiveSimMatch } from "./RankingSimulator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -268,7 +269,7 @@ function PrizeBanner({ prizePool, approvedCount }: { prizePool: number; approved
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type Period = "geral" | "hoje" | "semana";
+type Period = "geral" | "hoje" | "ontem" | "semana";
 
 interface Props {
   entries: RankingEntry[];
@@ -278,10 +279,11 @@ interface Props {
   prizePool?: number;
   approvedCount?: number;
   showPrizePool?: boolean;
-  rankings?: { hoje: RankingEntry[]; semana: RankingEntry[] };
+  rankings?: { hoje: RankingEntry[]; ontem: RankingEntry[]; semana: RankingEntry[] };
+  liveSim?: LiveSimMatch[];
 }
 
-export default function RankingClient({ entries, currentUserId, divisions, totalParticipants, prizePool, approvedCount, showPrizePool = true, rankings }: Props) {
+export default function RankingClient({ entries, currentUserId, divisions, totalParticipants, prizePool, approvedCount, showPrizePool = true, rankings, liveSim = [] }: Props) {
   const [search, setSearch] = useState("");
   const [activeDiv, setActiveDiv] = useState<string>("all");
   const [period, setPeriod] = useState<Period>("geral");
@@ -310,6 +312,7 @@ export default function RankingClient({ entries, currentUserId, divisions, total
   const periodTabs: { id: Period; label: string }[] = [
     { id: "geral", label: "Geral" },
     { id: "hoje", label: "Hoje" },
+    { id: "ontem", label: "Ontem" },
     { id: "semana", label: "Semana" },
   ];
 
@@ -335,7 +338,7 @@ export default function RankingClient({ entries, currentUserId, divisions, total
         </div>
       </div>
 
-      {/* Period selector: Geral / Hoje / Semana */}
+      {/* Period selector: Geral / Hoje / Ontem / Semana */}
       {rankings && (
         <div className="flex gap-1 p-0.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
           {periodTabs.map((t) => (
@@ -359,7 +362,9 @@ export default function RankingClient({ entries, currentUserId, divisions, total
       {/* Period note */}
       {!isGeral && (
         <div style={{ fontSize: 11, color: "rgba(231,238,250,0.5)", textAlign: "center" }}>
-          {period === "hoje" ? "Pontos conquistados hoje" : "Pontos conquistados nos últimos 7 dias"}
+          {period === "hoje" ? "Pontos conquistados hoje"
+            : period === "ontem" ? "Pontos conquistados ontem"
+            : "Pontos conquistados nos últimos 7 dias"}
         </div>
       )}
 
@@ -476,6 +481,9 @@ export default function RankingClient({ entries, currentUserId, divisions, total
           })}
         </div>
       )}
+
+      {/* Live ranking simulator — floating button, only while a match is live */}
+      <RankingSimulator entries={entries} liveSim={liveSim} currentUserId={currentUserId} />
     </div>
   );
 }

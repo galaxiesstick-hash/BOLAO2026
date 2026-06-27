@@ -13,15 +13,22 @@ Registro das alterações do sistema para comunicação periódica aos participa
 
 ## 🆕 Não enviado
 
+### Palpites / Bolão
+- **Quem não palpitou agora aparece:** ao bloquear os palpites de um jogo (10 min antes), além de liberar os palpites de todos, o sistema passa a mostrar também a **lista de quem não palpitou** naquele jogo — tanto na **aba "Bolão" do jogo** (seção "🔕 Não palpitaram", com a contagem) quanto no **e-mail de palpites bloqueados** que é enviado automaticamente. Só conta participantes com pagamento aprovado.
+
 ### Notificações (sino)
 - O **sininho** agora **abre e fecha na própria tela** ao tocar, num painel sobre a página — sem mais sair para uma página separada. Toque de novo (ou fora do painel) para fechar. Os ícones por tipo ficaram mais claros (resultado 🏆, ranking ⭐, pagamento 💳, conquista 🏅) e há um atalho **"Ver todas"** para o histórico completo.
 
 ### Ranking
 - **Setas de variação de posição:** no ranking **Geral**, cada participante agora mostra se **subiu (▲ verde)**, **caiu (▼ vermelho)** ou **manteve (–)** a posição, com o número de posições, em relação ao **início do dia**. Durante os jogos ao vivo as setas se mexem junto, dá pra acompanhar a disputa em tempo real.
+- **Aba "Ontem" no ranking:** além de Geral / Hoje / Semana, agora tem a aba **Ontem**, que mostra o ranking só com os pontos do **dia anterior** (jogos, perguntas e conquistas daquele dia).
 
 ### Perfil
 - **Tipos de palpite no perfil:** o perfil (seu e o dos outros participantes) agora mostra a **distribuição dos palpites finalizados por tipo** — **Cravados** (placar exato), **Quase** (vencedor + gols do vencedor), **Saldo** (vencedor + diferença de gols), **Parcial** (só o vencedor), **Esmolas** (+1 de consolação) e **Erros**. Fica **recolhido por padrão** (botão "Mostrar") para não poluir a página.
 - **Correção nos "Acertos":** as **Esmolas não contam mais como acerto** na estatística de "Acertos" do perfil (antes, em alguns casos, estavam sendo somadas indevidamente). O número de Acertos agora reflete só os acertos de verdade — e a Esmola continua sem entrar na sequência de acertos das conquistas.
+- **Conquistas com metas corretas:** a **barra de progresso das conquistas** no perfil agora mostra exatamente a **meta configurada** de cada conquista (ex.: Cravador 5/10/15, Em Chamas 7/12/15, Rei das Zebras 1/2/4, Invencível 15/30/50). Antes a barra exibia metas antigas, diferentes das que realmente valiam para desbloquear. Os selos no perfil público também passam a mostrar a descrição correta.
+- **Conquistas dos outros no perfil público:** ao abrir o perfil de outro participante, agora aparecem os **mesmos cards de conquista** do seu perfil, mostrando o **nível já alcançado** em cada uma (Cravador, Em Chamas, Rei das Zebras, Invencível). No perfil público são exibidas **apenas as conquistas já obtidas** (sem a barra de progresso) — dá pra ver de quem já desbloqueou o quê.
+- **Zebra unificada na conquista "Rei das Zebras":** agora ela usa a **mesma definição de zebra** do resto do sistema — acertar um **resultado (vitória OU empate) com menos de 10% de probabilidade** (a ⚡ Zebra Histórica). Antes a conquista exigia vitória e usava <15%, o que deixava de fora casos como o **empate 0×0 da Espanha** (7,7%). Já recalculado: quem cravou aquele empate recebeu a conquista (+2 pts).
 
 ### Perguntas
 - Na aba **Encerradas**, as perguntas agora aparecem da **mais recente para a mais antiga** (a que encerrou por último vem primeiro), igual à aba "Finalizados" dos Jogos.

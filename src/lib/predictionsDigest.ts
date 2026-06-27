@@ -49,21 +49,26 @@ export async function sendPredictionsDigestForMatch(
     return { sent: 0, predictions: 0 };
   }
 
-  let recipients: string[];
-  if (opts?.onlyTo) {
-    recipients = [opts.onlyTo];
-  } else {
-    const users = await db.user.findMany({
-      where: { role: "PARTICIPANT", email: { not: "" }, payment: { status: "APPROVED" } },
-      select: { email: true },
-    });
-    recipients = users.map((u) => u.email);
-  }
+  // All approved participants — used both to compute who didn't predict and as
+  // the recipient list (a single user owns at most one approved payment).
+  const approvedUsers = await db.user.findMany({
+    where: { role: "PARTICIPANT", payment: { status: "APPROVED" } },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
+  const predictedIds = new Set(preds.map((p) => p.user.id));
+  const missing = approvedUsers
+    .filter((u) => !predictedIds.has(u.id))
+    .map((u) => u.name);
+
+  const recipients: string[] = opts?.onlyTo
+    ? [opts.onlyTo]
+    : approvedUsers.map((u) => u.email).filter((e): e is string => !!e);
 
   let sent = 0;
   for (const to of recipients) {
     try {
-      await sendPredictionsDigestEmail({ to, match: matchInfo, predictions });
+      await sendPredictionsDigestEmail({ to, match: matchInfo, predictions, missing });
       sent++;
     } catch (e) {
       console.error("[digest] send failed:", to, e instanceof Error ? e.message : e);

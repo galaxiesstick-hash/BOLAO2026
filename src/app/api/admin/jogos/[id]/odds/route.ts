@@ -5,8 +5,6 @@ import { db } from "@/lib/db";
 import { z } from "zod";
 import { triggerPointsCalculation } from "@/services/syncService";
 
-const ODDS_CUTOFF_HOURS = 24;
-
 const schema = z.object({
   homeWinProb: z.number().min(0).max(100),
   drawProb:    z.number().min(0).max(100),
@@ -35,11 +33,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!match) return NextResponse.json({ error: "Jogo não encontrado" }, { status: 404 });
 
-  // Odds are frozen 24h before kickoff (or if already started)
-  const cutoff = new Date(match.kickoff.getTime() - ODDS_CUTOFF_HOURS * 60 * 60 * 1000);
-  if (new Date() >= cutoff || match.status === "LIVE" || match.status === "FINISHED") {
+  // Admin pode editar odds a qualquer momento ENQUANTO a partida não começou.
+  // (Removida a trava de 24h; mantém-se apenas o bloqueio para jogo em andamento/encerrado.)
+  if (match.status === "LIVE" || match.status === "FINISHED") {
     return NextResponse.json(
-      { error: `Odds congeladas — só podem ser alteradas até ${ODDS_CUTOFF_HOURS}h antes da partida.` },
+      { error: "Odds não podem ser alteradas com a partida em andamento ou encerrada." },
       { status: 409 }
     );
   }

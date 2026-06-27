@@ -11,6 +11,8 @@
  *       MISS           = 0
  */
 
+import { scoringRulesFor, type ScoringRules } from "./scoring-config";
+
 export type MatchAccuracyType =
   | "EXACT"           // Cravado — placar exato
   | "ALMOST_EXACT"    // Quase Cravou — vencedor + gols do vencedor certos
@@ -75,6 +77,7 @@ export function classifyAccuracy(
   predAway: number,
   actualHome: number,
   actualAway: number,
+  rules: ScoringRules = { drawSaldoBonus: true },
 ): MatchAccuracyType {
   // EXACT: placar exato
   if (predHome === actualHome && predAway === actualAway) return "EXACT";
@@ -91,10 +94,15 @@ export function classifyAccuracy(
 
     if (winnerGoalsCorrect) return "ALMOST_EXACT";
 
-    // Acertou saldo — mesma diferença de gols, mas gols do vencedor errados
+    // Acertou saldo — mesma diferença de gols, mas gols do vencedor errados.
+    // Em empate o saldo é sempre 0, então casa trivialmente; sob a regra nova
+    // (drawSaldoBonus=false) um empate não-exato vale só "Parcial" (+1).
     const actualDiff = Math.abs(actualHome - actualAway);
     const predDiff   = Math.abs(predHome  - predAway);
-    if (actualDiff === predDiff) return "GOAL_DIFF";
+    if (actualDiff === predDiff) {
+      if (actualWinner === "draw" && !rules.drawSaldoBonus) return "WINNER_ONLY";
+      return "GOAL_DIFF";
+    }
 
     return "WINNER_ONLY";
   }
@@ -121,6 +129,7 @@ export function calculateScore(
   homeProb = 33.33,
   drawProb = 33.33,
   awayProb = 33.33,
+  matchKickoff?: Date | string | null,
   system: "BALANCED" | "SIMPLE" | "SUPER_SIMPLE" = "BALANCED",
 ): ScoringResult {
   // Legacy simple modes (kept for compatibility / config option)
@@ -151,7 +160,8 @@ export function calculateScore(
   }
 
   // BALANCED — default
-  const accuracy = classifyAccuracy(predHome, predAway, actualHome, actualAway);
+  const rules = scoringRulesFor(matchKickoff);
+  const accuracy = classifyAccuracy(predHome, predAway, actualHome, actualAway, rules);
   const odds = calculateMatchPoints(homeProb, drawProb, awayProb);
 
   // Which base points to use depends on what actually happened
