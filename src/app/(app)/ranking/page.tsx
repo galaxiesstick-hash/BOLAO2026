@@ -76,11 +76,17 @@ export default async function RankingPage() {
   const divisions = calculateDivisions(totalParticipants);
 
   // Live provisional points (from matches in progress) + period windows
-  const [livePts, periodTodayMap, periodWeekMap, periodYesterdayMap] = await Promise.all([
+  // Group stage ended 2026-06-28T03:00:00Z (meia-noite BRT do dia 28/06).
+  // Fixed cutoff so the tab stays a permanent snapshot even after knockout matches score.
+  const GROUP_STAGE_END = new Date("2026-06-28T03:00:00Z");
+  const GROUP_STAGE_START = new Date("2026-06-01T00:00:00Z");
+
+  const [livePts, periodTodayMap, periodWeekMap, periodYesterdayMap, groupStageMap] = await Promise.all([
     getLivePointsByUser(),
     (async () => computePeriodPoints(periodWindows().todayStart, periodWindows().end))(),
     (async () => computePeriodPoints(periodWindows().weekStart, periodWindows().end))(),
     (async () => { const w = periodWindows(); return computePeriodPoints(w.yesterdayStart, w.todayStart); })(),
+    computePeriodPoints(GROUP_STAGE_START, GROUP_STAGE_END),
   ]);
 
   const userInfo = new Map(scores.map((s) => [s.user.id, s.user] as const));
@@ -135,13 +141,14 @@ export default async function RankingPage() {
   // earned in the window, plus live provisional points (a live match is "today").
   // includeLive: add live provisional points (only for windows that include "now",
   // i.e. Hoje/Semana). "Ontem" is a closed window, so it must NOT include live points.
-  const buildPeriod = (pmap: Map<string, PeriodPoints>, includeLive = true): RankingEntry[] => {
+  const buildPeriod = (pmap: Map<string, PeriodPoints>, includeLive = true, customLive?: Map<string, number>): RankingEntry[] => {
+    const lp = customLive ?? livePts;
     const arr: { id: string; matchPoints: number; questionPoints: number; achievementPoints: number; live: number; total: number }[] = [];
-    const ids = new Set<string>(includeLive ? [...pmap.keys(), ...livePts.keys()] : [...pmap.keys()]);
+    const ids = new Set<string>(includeLive ? [...pmap.keys(), ...lp.keys()] : [...pmap.keys()]);
     for (const id of ids) {
       if (!userInfo.has(id)) continue; // approved participants only
       const pp = pmap.get(id) ?? { matchPoints: 0, questionPoints: 0, achievementPoints: 0, total: 0 };
-      const live = includeLive ? (livePts.get(id) ?? 0) : 0;
+      const live = includeLive ? (lp.get(id) ?? 0) : 0;
       const total = pp.total + live;
       if (total <= 0) continue;
       arr.push({ id, matchPoints: pp.matchPoints + live, questionPoints: pp.questionPoints, achievementPoints: pp.achievementPoints, live, total });
@@ -175,8 +182,9 @@ export default async function RankingPage() {
 
   const rankings = {
     hoje: buildPeriod(periodTodayMap),
-    ontem: buildPeriod(periodYesterdayMap, false), // closed window — no live points
+    ontem: buildPeriod(periodYesterdayMap, false),
     semana: buildPeriod(periodWeekMap),
+    grupos: buildPeriod(groupStageMap, false), // closed window — group stage is over
   };
 
   // Live matches (with everyone's predictions + odds) for the what-if simulator.

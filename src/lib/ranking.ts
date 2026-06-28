@@ -113,6 +113,60 @@ export async function computePeriodPoints(start: Date, end: Date): Promise<Map<s
   return map;
 }
 
+/**
+ * Points each user earned from group-stage matches and questions linked to them.
+ * Phase-based (not date-based), so it stays accurate even after the phase ends.
+ * Achievements are excluded — they're not phase-specific.
+ */
+export async function computeGroupStagePoints(): Promise<Map<string, PeriodPoints>> {
+  const [preds, answers] = await Promise.all([
+    db.prediction.findMany({
+      where: { totalPoints: { gt: 0 }, match: { status: "FINISHED", phase: "GROUPS" } },
+      select: { userId: true, totalPoints: true },
+    }),
+    db.answer.findMany({
+      where: { points: { gt: 0 }, question: { match: { phase: "GROUPS" } } },
+      select: { userId: true, points: true },
+    }),
+  ]);
+
+  const map = new Map<string, PeriodPoints>();
+  const get = (u: string): PeriodPoints => {
+    let e = map.get(u);
+    if (!e) { e = { matchPoints: 0, questionPoints: 0, achievementPoints: 0, total: 0 }; map.set(u, e); }
+    return e;
+  };
+  for (const p of preds) { const e = get(p.userId); e.matchPoints += p.totalPoints ?? 0; }
+  for (const a of answers) { const e = get(a.userId); e.questionPoints += a.points ?? 0; }
+  for (const e of map.values()) e.total = e.matchPoints + e.questionPoints;
+  return map;
+}
+
+/** Live provisional points from group-stage matches currently in progress. */
+export async function getLiveGroupStagePointsByUser(): Promise<Map<string, number>> {
+  const liveMatches = await db.match.findMany({
+    where: { status: "LIVE", phase: "GROUPS", homeGoals: { not: null }, awayGoals: { not: null } },
+    select: {
+      kickoff: true,
+      homeGoals: true, awayGoals: true,
+      homeWinProb: true, drawProb: true, awayWinProb: true,
+      predictions: { select: { userId: true, homeGoals: true, awayGoals: true } },
+    },
+  });
+
+  const map = new Map<string, number>();
+  for (const m of liveMatches) {
+    const hp = m.homeWinProb ? Number(m.homeWinProb) : 33.33;
+    const dp = m.drawProb   ? Number(m.drawProb)    : 33.33;
+    const ap = m.awayWinProb ? Number(m.awayWinProb) : 33.33;
+    for (const p of m.predictions) {
+      const r = calculateScore(p.homeGoals, p.awayGoals, m.homeGoals!, m.awayGoals!, hp, dp, ap, m.kickoff);
+      if (r.totalPoints > 0) map.set(p.userId, (map.get(p.userId) ?? 0) + r.totalPoints);
+    }
+  }
+  return map;
+}
+
 /** Window helpers in America/Sao_Paulo (BRT, UTC-3). */
 export function periodWindows(now = new Date()): { yesterdayStart: Date; todayStart: Date; weekStart: Date; end: Date } {
   const dayStr = new Intl.DateTimeFormat("en-CA", {
