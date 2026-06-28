@@ -4,9 +4,7 @@ import { z } from "zod";
 import { NextResponse } from "next/server";
 
 const schema = z.object({
-  name: z.string().min(2, "Nome muito curto").max(60, "Nome muito longo").trim(),
-  // Guard against oversized base64 avatars: a large data URI bloats the DB and
-  // every API response. ~60k chars ≈ a well-compressed ~192px JPEG.
+  // name intentionally omitted — name changes blocked by admin until further notice.
   avatarUrl: z.string().max(60000, "Imagem muito grande, escolha outra").nullable(),
 });
 
@@ -22,10 +20,7 @@ export async function PATCH(req: Request) {
 
   await db.user.update({
     where: { id: session.user.id },
-    data: {
-      name: parsed.data.name,
-      avatarUrl: parsed.data.avatarUrl,
-    },
+    data: { avatarUrl: parsed.data.avatarUrl },
   });
 
   return NextResponse.json({ ok: true });

@@ -63,7 +63,7 @@ export default function EditarPerfilClient({ initialName, initialEmail, initialA
       const res = await fetch("/api/user/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), avatarUrl }),
+        body: JSON.stringify({ avatarUrl }),
       });
       if (!res.ok) {
         const json = await res.json();
@@ -180,25 +180,23 @@ export default function EditarPerfilClient({ initialName, initialEmail, initialA
         />
       </div>
 
-      {/* Name field */}
+      {/* Name field — locked by admin */}
       <div>
         <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(231,238,250,0.5)", letterSpacing: 1, textTransform: "uppercase" }}>
           Nome
         </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={60}
+        <div
           style={{
-            display: "block", width: "100%", marginTop: 8,
-            padding: "13px 16px", borderRadius: 14,
-            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
-            color: "#f3f6fb", fontSize: 15, fontWeight: 500,
-            outline: "none", boxSizing: "border-box",
+            marginTop: 8, padding: "13px 16px", borderRadius: 14,
+            background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+            color: "rgba(231,238,250,0.6)", fontSize: 15, fontWeight: 500,
           }}
-          placeholder="Seu nome"
-        />
+        >
+          {name}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(231,238,250,0.28)", marginTop: 5 }}>
+          A alteração de nome está temporariamente desativada pelo administrador.
+        </div>
       </div>
 
       {/* Email (read-only) */}
