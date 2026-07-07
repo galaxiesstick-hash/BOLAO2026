@@ -2,28 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-const BANNER_KEY = "banner_pt_eliminada_2026";
-const BANNER_TTL = 24 * 60 * 60 * 1000; // 24h em ms
+// Banner ativo até 2026-07-08T23:59:00Z (~24h a partir de 07/07)
+const BANNER_UNTIL = new Date("2026-07-08T23:59:00Z");
 
 export default function PortugalBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(BANNER_KEY);
-      const seen = stored ? parseInt(stored, 10) : 0;
-      if (!seen || Date.now() - seen > BANNER_TTL) {
-        setVisible(true);
-      }
-    } catch {
-      // localStorage indisponível — não exibe
+    if (Date.now() < BANNER_UNTIL.getTime()) {
+      setVisible(true);
     }
   }, []);
 
   function close() {
-    try {
-      localStorage.setItem(BANNER_KEY, String(Date.now()));
-    } catch {}
     setVisible(false);
   }
 
