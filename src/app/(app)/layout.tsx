@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import Navbar from "@/components/layout/Navbar";
 import BottomNav from "@/components/layout/BottomNav";
 import PresenceProvider from "@/components/presence/PresenceProvider";
-import PortugalBanner from "@/components/PortugalBanner";
 // ChatPanel desativado (chat quase sem uso) — mantido no código para reativar
 // futuramente: basta reimportar e voltar <ChatPanel /> no return abaixo.
 // import ChatPanel from "@/components/ChatPanel";
@@ -42,7 +41,6 @@ export default async function AppLayout({
 
   return (
     <PresenceProvider currentUserId={session.user.id}>
-      <PortugalBanner />
       <div className="min-h-screen flex flex-col">
         <Navbar unreadCount={unreadCount} isAdmin={isAdmin} notifications={notifications} />
         <main className="flex-1 px-4 py-4 pb-28 max-w-lg mx-auto w-full">
